@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eval-control-api
+data:
+  APP_ENV: production
+  LOG_LEVEL: INFO
+  API_PREFIX: /api/v1
+  MONGODB_DATABASE: bryte-evals
+  MONGODB_MAX_POOL_SIZE: "100"
+  MONGODB_MIN_POOL_SIZE: "5"
+  CORS_ORIGINS: https://eval.example.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: eval-control-api
+type: Opaque
+stringData:
+  MONGODB_URI: mongodb://mongo.example.internal:27017
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eval-control-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eval-control-api
+  template:
+    metadata:
+      labels:
+        app: eval-control-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/your-org/eval-control-api:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: eval-control-api
+            - secretRef:
+                name: eval-control-api
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eval-control-api
+spec:
+  selector:
+    app: eval-control-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eval-control-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: eval-control-api
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: eval-control-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: eval-control-api
+  minReplicas: 2
+  maxReplicas: 10
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
