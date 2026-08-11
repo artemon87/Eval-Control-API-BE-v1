@@ -51,8 +51,6 @@ async def list_unit_cases(
     limit: Limit = 100,
     cursor: str | None = None,
 ) -> Page[UnitCase]:
-    if not await repository.runs.get_by_run_id(run_id):
-        raise HTTPException(status_code=404, detail="Unit run not found")
     try:
         items, next_cursor = await repository.list_cases(
             run_id, verdict=verdict, limit=limit, cursor=cursor

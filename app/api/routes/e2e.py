@@ -44,8 +44,6 @@ async def list_e2e_cases(
     limit: Limit = 100,
     cursor: str | None = None,
 ) -> Page[E2ECase]:
-    if not await repository.runs.get_by_run_id(run_id):
-        raise HTTPException(status_code=404, detail="E2E run not found")
     try:
         items, next_cursor = await repository.list_cases(
             run_id, suite=suite, verdict=verdict, limit=limit, cursor=cursor
