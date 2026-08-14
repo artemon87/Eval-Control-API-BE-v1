@@ -13,6 +13,9 @@ class Page[T](APIModel):
     next_cursor: str | None = None
 
 
+Verdict = Literal["passed", "failed", "blocked", "pending", "error", "xpassed"]
+
+
 class RunSummary(APIModel):
     total: int = 0
     passed: int = 0
@@ -27,7 +30,7 @@ class BaseRun(APIModel):
     run_id: str
     batch_id: str | None = None
     execution_status: Literal["queued", "running", "completed", "error", "cancelled"]
-    verdict: Literal["passed", "failed", "blocked", "pending"]
+    verdict: Verdict
     created_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -47,3 +50,16 @@ class MetricComparison(APIModel):
 
 class HealthResponse(APIModel):
     status: Literal["ok", "not_ready"]
+
+
+class TrendPoint(APIModel):
+    run_id: str
+    started_at: datetime
+    verdict: Verdict
+    score: float | None = None
+    threshold: float | None = None
+    pass_rate_pct: float = 0
+    total_cases: int = 0
+    response_time_ms: float | None = None
+    skill_version: str | None = None
+    bsa_version: str | None = None

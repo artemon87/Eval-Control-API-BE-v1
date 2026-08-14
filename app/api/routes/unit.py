@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.dependencies import UnitRepositoryDependency
-from app.models import Page, UnitCase, UnitComparison, UnitRun, UnitVersionSummary
+from app.models import Page, TrendPoint, UnitCase, UnitComparison, UnitRun, UnitVersionSummary
 from app.services import build_unit_comparison
 
 router = APIRouter(prefix="/unit", tags=["unit evaluations"])
@@ -37,7 +37,7 @@ async def list_unit_runs(
 
 @router.get("/runs/{run_id}", response_model=UnitRun)
 async def get_unit_run(run_id: str, repository: UnitRepositoryDependency) -> UnitRun:
-    item = await repository.runs.get_by_run_id(run_id)
+    item = await repository.get_run(run_id)
     if not item:
         raise HTTPException(status_code=404, detail="Unit run not found")
     return UnitRun.model_validate(item)
@@ -58,6 +58,51 @@ async def list_unit_cases(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Page(items=[UnitCase.model_validate(item) for item in items], next_cursor=next_cursor)
+
+
+@router.get("/trends/cases/{case_id}", response_model=Page[TrendPoint])
+async def unit_case_trend(
+    case_id: str,
+    repository: UnitRepositoryDependency,
+    skill: str,
+    environment: str | None = None,
+    limit: Limit = 30,
+    cursor: str | None = None,
+) -> Page[TrendPoint]:
+    try:
+        items, next_cursor = await repository.trend(
+            scope="case",
+            skill=skill,
+            case_id=case_id,
+            environment=environment,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Page(items=[TrendPoint.model_validate(item) for item in items], next_cursor=next_cursor)
+
+
+@router.get("/trends/skills/{skill}", response_model=Page[TrendPoint])
+async def unit_skill_trend(
+    skill: str,
+    repository: UnitRepositoryDependency,
+    environment: str | None = None,
+    limit: Limit = 30,
+    cursor: str | None = None,
+) -> Page[TrendPoint]:
+    try:
+        items, next_cursor = await repository.trend(
+            scope="skill",
+            skill=skill,
+            case_id=None,
+            environment=environment,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Page(items=[TrendPoint.model_validate(item) for item in items], next_cursor=next_cursor)
 
 
 @router.get("/skills/{skill}/versions", response_model=list[UnitVersionSummary])

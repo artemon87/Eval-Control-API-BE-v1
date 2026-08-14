@@ -98,6 +98,11 @@ class MongoRepository:
         next_cursor = encode_id_cursor(page[-1]["_id"]) if has_more and page else None
         return [normalize_document(document) for document in page], next_cursor
 
-    async def get_by_run_id(self, run_id: str) -> dict[str, Any] | None:
-        document = await self.collection.find_one({"run_id": run_id})
+    async def get_by_run_id(
+        self, run_id: str, *, eval_type: str | None = None
+    ) -> dict[str, Any] | None:
+        query: dict[str, Any] = {"run_id": run_id}
+        if eval_type:
+            query["eval_type"] = eval_type
+        document = await self.collection.find_one(query)
         return normalize_document(document) if document else None

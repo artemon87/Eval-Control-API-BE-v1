@@ -2,13 +2,14 @@ from typing import Literal
 
 from pydantic import Field
 
-from app.models.common import APIModel, BaseRun
+from app.models.common import APIModel, BaseRun, Verdict
 
 
 class E2EConfig(APIModel):
     selected_suites: list[str]
     max_tier: int | None = None
     live_conversation: bool = True
+    pass_rate_threshold: float | None = None
 
 
 class E2ERun(BaseRun):
@@ -27,7 +28,7 @@ class E2ECase(APIModel):
     suite: str
     role: str | None = None
     tier: int | None = None
-    verdict: Literal["passed", "failed", "error"]
+    verdict: Verdict
     status: str | None = None
     score: float | None = None
     threshold: float | None = None
@@ -36,4 +37,3 @@ class E2ECase(APIModel):
     explanation: str | None = None
     error: str | None = None
     bug_ref: str | None = None
-

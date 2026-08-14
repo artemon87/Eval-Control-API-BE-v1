@@ -15,6 +15,7 @@ async def main() -> None:
                 IndexModel([("run_id", ASCENDING)], unique=True, name="run_id_unique"),
                 IndexModel(
                     [
+                        ("eval_type", ASCENDING),
                         ("skill", ASCENDING),
                         ("environment", ASCENDING),
                         ("unit_config.skill_version", ASCENDING),
@@ -32,7 +33,15 @@ async def main() -> None:
         await database[settings.unit_cases_collection].create_indexes(
             [
                 IndexModel([("run_id", ASCENDING), ("_id", DESCENDING)], name="run_cases"),
-                IndexModel([("case_id", ASCENDING), ("run_id", ASCENDING)], name="case_history"),
+                IndexModel(
+                    [
+                        ("eval_type", ASCENDING),
+                        ("skill", ASCENDING),
+                        ("case_id", ASCENDING),
+                        ("run_id", ASCENDING),
+                    ],
+                    name="case_history",
+                ),
             ]
         )
         await database[settings.e2e_runs_collection].create_indexes(
@@ -40,6 +49,7 @@ async def main() -> None:
                 IndexModel([("run_id", ASCENDING)], unique=True, name="run_id_unique"),
                 IndexModel(
                     [
+                        ("eval_type", ASCENDING),
                         ("stage", ASCENDING),
                         ("target", ASCENDING),
                         ("started_at", DESCENDING),
@@ -57,8 +67,13 @@ async def main() -> None:
             [
                 IndexModel([("run_id", ASCENDING), ("_id", DESCENDING)], name="run_cases"),
                 IndexModel(
-                    [("suite", ASCENDING), ("verdict", ASCENDING), ("_id", DESCENDING)],
-                    name="suite_verdict",
+                    [
+                        ("eval_type", ASCENDING),
+                        ("suite", ASCENDING),
+                        ("case_id", ASCENDING),
+                        ("run_id", ASCENDING),
+                    ],
+                    name="case_history",
                 ),
             ]
         )

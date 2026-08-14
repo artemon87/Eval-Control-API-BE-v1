@@ -1,8 +1,8 @@
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
-from app.models.common import APIModel, BaseRun, MetricComparison
+from app.models.common import APIModel, BaseRun, MetricComparison, Verdict
 
 
 class UnitConfig(APIModel):
@@ -10,8 +10,13 @@ class UnitConfig(APIModel):
     mode: str | None = None
     metrics: list[str] = Field(default_factory=list)
     bsa_environment: str
-    bsa_version: str
+    bsa_version: str = "unknown"
     skill_version: str
+
+    @field_validator("bsa_version", mode="before")
+    @classmethod
+    def default_bsa_version(cls, value: object) -> object:
+        return "unknown" if value is None else value
 
 
 class UnitRun(BaseRun):
@@ -43,7 +48,7 @@ class UnitCase(APIModel):
     test_name: str
     test_type: str
     tier: int | None = None
-    verdict: Literal["passed", "failed", "error"]
+    verdict: Verdict
     scores: dict[str, float] = Field(default_factory=dict)
     tool_calls: list[ToolCall] = Field(default_factory=list)
     validation_result: object | None = None
@@ -51,7 +56,12 @@ class UnitCase(APIModel):
     response: str | None = None
     error: str | None = None
     skill_version: str
-    bsa_version: str
+    bsa_version: str = "unknown"
+
+    @field_validator("bsa_version", mode="before")
+    @classmethod
+    def default_bsa_version(cls, value: object) -> object:
+        return "unknown" if value is None else value
 
 
 class UnitVersionSummary(APIModel):
