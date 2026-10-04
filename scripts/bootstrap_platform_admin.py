@@ -3,7 +3,7 @@ import asyncio
 import os
 from datetime import UTC, datetime
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from pymongo.errors import DuplicateKeyError
 
 
@@ -35,7 +35,7 @@ async def bootstrap(args: argparse.Namespace) -> None:
     if not args.confirm:
         raise RuntimeError("Refusing to write without --confirm")
 
-    client = AsyncIOMotorClient(
+    client = AsyncMongoClient(
         required_env("DS_DB_MONGODB_URI"),
         serverSelectionTimeoutMS=5_000,
     )
@@ -101,7 +101,7 @@ async def bootstrap(args: argparse.Namespace) -> None:
         )
         print(f"Created platform_admin assignment {result.inserted_id}")
     finally:
-        client.close()
+        await client.close()
 
 
 if __name__ == "__main__":

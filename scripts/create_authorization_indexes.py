@@ -1,8 +1,7 @@
 import asyncio
 import os
 
-from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import ASCENDING, DESCENDING, IndexModel
+from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, IndexModel
 
 
 def required_env(name: str) -> str:
@@ -15,7 +14,7 @@ def required_env(name: str) -> str:
 async def main() -> None:
     uri = required_env("DS_DB_MONGODB_URI")
     database_name = required_env("DS_DB_MONGODB_NAME")
-    client = AsyncIOMotorClient(uri, serverSelectionTimeoutMS=5_000)
+    client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
     try:
         await client.admin.command("ping")
         database = client[database_name]
@@ -79,8 +78,41 @@ async def main() -> None:
                 ),
             ]
         )
+
+        await database.authorization_access_requests.create_indexes(
+            [
+                IndexModel(
+                    [
+                        ("tenant_id", ASCENDING),
+                        ("principal_id", ASCENDING),
+                        ("requested_role", ASCENDING),
+                    ],
+                    unique=True,
+                    partialFilterExpression={
+                        "status": {"$in": ["pending", "approved"]}
+                    },
+                    name="uq_open_authorization_access_request",
+                ),
+                IndexModel(
+                    [
+                        ("tenant_id", ASCENDING),
+                        ("status", ASCENDING),
+                        ("created_at", DESCENDING),
+                    ],
+                    name="ix_authorization_access_request_queue",
+                ),
+                IndexModel(
+                    [
+                        ("tenant_id", ASCENDING),
+                        ("principal_id", ASCENDING),
+                        ("created_at", DESCENDING),
+                    ],
+                    name="ix_authorization_access_request_requester",
+                ),
+            ]
+        )
     finally:
-        client.close()
+        await client.close()
 
 
 if __name__ == "__main__":

@@ -31,15 +31,7 @@ def require_permission(
     return dependency
 
 
-RunOverrideDependency = Annotated[
+PlatformAdminDependency = Annotated[
     Any,
-    Depends(require_permission(Permission.RUN_OVERRIDE)),
-]
-SuggestionModerateDependency = Annotated[
-    Any,
-    Depends(require_permission(Permission.SUGGESTION_MODERATE)),
-]
-PolicyManageDependency = Annotated[
-    Any,
-    Depends(require_permission(Permission.POLICY_MANAGE)),
+    Depends(require_permission(Permission.ACCESS_MANAGE)),
 ]

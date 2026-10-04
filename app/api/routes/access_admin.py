@@ -4,19 +4,26 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from src.api.dependencies import AuthorizationServiceDependency, CurrentUserDependency
 from src.models.authorization import (
+    AccessRequestDecision,
+    AccessRequestRecord,
+    AccessRequestStatus,
     AssignmentCreate,
     AssignmentRecord,
     AssignmentRevoke,
     PaginatedAccessUsers,
+    PaginatedAccessRequests,
     PaginatedAssignments,
     PaginatedAuditEvents,
 )
 from src.repositories.authorization import (
+    AccessRequestConflictError,
+    AccessRequestNotFoundError,
     AssignmentAlreadyExistsError,
     AssignmentNotFoundError,
 )
 from src.security.authorization_identity import identity_from_authenticated_user
 from src.services.authorization import (
+    AccessRequestAlreadySatisfiedError,
     AuthorizationDeniedError,
     InvalidAssignmentError,
     PrincipalNotFoundError,
@@ -41,6 +48,10 @@ def _translate_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     if isinstance(exc, AssignmentAlreadyExistsError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, (AccessRequestConflictError, AccessRequestAlreadySatisfiedError)):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, AccessRequestNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     if isinstance(exc, InvalidAssignmentError):
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     raise exc
@@ -139,6 +150,47 @@ async def list_audit_events(
             identity_from_authenticated_user(current_user),
             limit=limit,
             offset=offset,
+        )
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.get("/requests", response_model=PaginatedAccessRequests)
+async def list_access_requests(
+    current_user: CurrentUserDependency,
+    service: AuthorizationServiceDependency,
+    request_status: AccessRequestStatus | None = None,
+    limit: PageLimit = 50,
+    offset: PageOffset = 0,
+) -> PaginatedAccessRequests:
+    try:
+        return await service.list_access_requests(
+            identity_from_authenticated_user(current_user),
+            status=request_status,
+            limit=limit,
+            offset=offset,
+        )
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.post(
+    "/requests/{access_request_id}/decision",
+    response_model=AccessRequestRecord,
+)
+async def decide_access_request(
+    access_request_id: str,
+    payload: AccessRequestDecision,
+    request: Request,
+    current_user: CurrentUserDependency,
+    service: AuthorizationServiceDependency,
+) -> AccessRequestRecord:
+    try:
+        return await service.decide_access_request(
+            identity_from_authenticated_user(current_user),
+            access_request_id,
+            payload,
+            request_id=_request_id(request),
         )
     except Exception as exc:
         raise _translate_error(exc) from exc

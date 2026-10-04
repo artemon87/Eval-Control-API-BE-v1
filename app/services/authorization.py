@@ -1,4 +1,8 @@
 from src.models.authorization import (
+    AccessRequestCreate,
+    AccessRequestDecision,
+    AccessRequestRecord,
+    AccessRequestStatus,
     AccessUser,
     ActorReference,
     AssignmentCreate,
@@ -7,6 +11,7 @@ from src.models.authorization import (
     AuditEvent,
     AuthorizationContext,
     PaginatedAccessUsers,
+    PaginatedAccessRequests,
     PaginatedAssignments,
     PaginatedAuditEvents,
 )
@@ -29,6 +34,10 @@ class PrincipalNotFoundError(RuntimeError):
 
 
 class InvalidAssignmentError(RuntimeError):
+    pass
+
+
+class AccessRequestAlreadySatisfiedError(RuntimeError):
     pass
 
 
@@ -55,7 +64,12 @@ class AuthorizationService:
         permissions: set[Permission] = set()
 
         for document in assignments:
-            role = PlatformRole(document["local_role"])
+            try:
+                role = PlatformRole(document["local_role"])
+            except ValueError:
+                # Ignore legacy moderator/evaluation_admin records after the
+                # simplified authorization model is deployed.
+                continue
             if not entra_allows_platform_role(identity.entra_roles, role):
                 continue
             local_roles.add(role)
@@ -103,11 +117,18 @@ class AuthorizationService:
                 active_only=True,
                 limit=100,
             )
-            assignments = [AssignmentRecord.model_validate(item) for item in documents]
+            assignments = [
+                AssignmentRecord.model_validate(item)
+                for item in documents
+                if item.get("local_role") == PlatformRole.PLATFORM_ADMIN
+            ]
             seen_roles = frozenset(principal.entra_roles_last_seen)
             permissions: set[Permission] = set()
             for assignment in assignments:
-                if entra_allows_platform_role(seen_roles, assignment.local_role):
+                if (
+                    assignment.local_role is PlatformRole.PLATFORM_ADMIN
+                    and entra_allows_platform_role(seen_roles, assignment.local_role)
+                ):
                     permissions.update(ROLE_PERMISSIONS[assignment.local_role])
 
             items.append(
@@ -147,7 +168,11 @@ class AuthorizationService:
             offset=offset,
         )
         return PaginatedAssignments(
-            items=[AssignmentRecord.model_validate(item) for item in documents],
+            items=[
+                AssignmentRecord.model_validate(item)
+                for item in documents
+                if item.get("local_role") == PlatformRole.PLATFORM_ADMIN
+            ],
             total=total,
             limit=limit,
             offset=offset,
@@ -262,3 +287,106 @@ class AuthorizationService:
             limit=limit,
             offset=offset,
         )
+
+    async def create_access_request(
+        self,
+        identity: AuthorizationIdentity,
+        payload: AccessRequestCreate,
+        *,
+        request_id: str | None,
+    ) -> AccessRequestRecord:
+        await self._repository.upsert_principal(identity)
+        if payload.requested_role in identity.entra_roles:
+            raise AccessRequestAlreadySatisfiedError(
+                "you already have the requested Entra role"
+            )
+        if "EvalHub.Admin" in identity.entra_roles:
+            raise AccessRequestAlreadySatisfiedError(
+                "Entra Admin already includes Editor access"
+            )
+        document = await self._repository.create_access_request(
+            identity,
+            payload,
+            request_id=request_id,
+        )
+        return AccessRequestRecord.model_validate(document)
+
+    async def list_my_access_requests(
+        self,
+        identity: AuthorizationIdentity,
+        *,
+        limit: int,
+        offset: int,
+    ) -> PaginatedAccessRequests:
+        documents, total = await self._repository.list_access_requests(
+            tenant_id=identity.tenant_id,
+            principal_id=identity.principal_id,
+            limit=limit,
+            offset=offset,
+        )
+        return PaginatedAccessRequests(
+            items=[AccessRequestRecord.model_validate(item) for item in documents],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def cancel_access_request(
+        self,
+        identity: AuthorizationIdentity,
+        access_request_id: str,
+        *,
+        request_id: str | None,
+    ) -> AccessRequestRecord:
+        document = await self._repository.cancel_access_request(
+            access_request_id,
+            identity,
+            request_id=request_id,
+        )
+        return AccessRequestRecord.model_validate(document)
+
+    async def list_access_requests(
+        self,
+        actor: AuthorizationIdentity,
+        *,
+        status: AccessRequestStatus | None,
+        limit: int,
+        offset: int,
+    ) -> PaginatedAccessRequests:
+        await self.require_permission(actor, Permission.ACCESS_MANAGE)
+        documents, total = await self._repository.list_access_requests(
+            tenant_id=actor.tenant_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return PaginatedAccessRequests(
+            items=[AccessRequestRecord.model_validate(item) for item in documents],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def decide_access_request(
+        self,
+        actor: AuthorizationIdentity,
+        access_request_id: str,
+        payload: AccessRequestDecision,
+        *,
+        request_id: str | None,
+    ) -> AccessRequestRecord:
+        await self.require_permission(actor, Permission.ACCESS_MANAGE)
+        actor_ref = ActorReference(
+            tenant_id=actor.tenant_id,
+            principal_id=actor.principal_id,
+            display_name=actor.display_name,
+        )
+        document = await self._repository.decide_access_request(
+            access_request_id,
+            actor.tenant_id,
+            actor_ref,
+            payload.action,
+            payload.note,
+            request_id=request_id,
+        )
+        return AccessRequestRecord.model_validate(document)

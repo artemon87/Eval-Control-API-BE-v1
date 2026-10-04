@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
+from src.models.auth import CurrentUser
 
 
 @dataclass(frozen=True, slots=True)
@@ -11,28 +11,25 @@ class AuthorizationIdentity:
     entra_roles: frozenset[str]
 
 
-def identity_from_authenticated_user(user: Any) -> AuthorizationIdentity:
-    """Adapt the existing validated authentication model to authorization.
+def identity_from_authenticated_user(user: CurrentUser) -> AuthorizationIdentity:
+    if not user.authenticated:
+        raise ValueError("user is not authenticated")
 
-    This function must only receive a user produced by the backend's verified JWT
-    dependency. Never construct it from frontend/session input.
-    """
+    tenant_id = (user.tenant_id or "").strip()
+    principal_id = (user.object_id or "").strip()
+    if not tenant_id:
+        raise ValueError("authenticated user is missing tenant_id")
+    if not principal_id:
+        raise ValueError("authenticated user is missing object_id")
 
-    tenant_id = str(getattr(user, "tenant_id", "")).strip()
-    principal_id = str(getattr(user, "object_id", "")).strip()
-    if not tenant_id or not principal_id:
-        raise ValueError("validated user is missing tenant_id or object_id")
-
-    raw_roles = getattr(user, "entra_roles", ()) or ()
-    mapped_role = getattr(getattr(user, "role", None), "value", None)
-    roles = {str(role) for role in raw_roles if role}
-    if mapped_role:
-        roles.add(str(mapped_role))
+    roles = {role.strip() for role in user.entra_roles if role and role.strip()}
+    if not roles:
+        roles.add(user.role.value)
 
     return AuthorizationIdentity(
         tenant_id=tenant_id,
         principal_id=principal_id,
-        display_name=str(getattr(user, "display_name", None) or "Unknown user"),
-        email=getattr(user, "email", None),
+        display_name=user.display_name or user.email or principal_id,
+        email=user.email,
         entra_roles=frozenset(roles),
     )

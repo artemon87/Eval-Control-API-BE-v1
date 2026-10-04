@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.security.permissions import Permission, PlatformRole
@@ -17,9 +18,25 @@ class AssignmentStatus(StrEnum):
 
 class ScopeType(StrEnum):
     GLOBAL = "global"
-    REPOSITORY = "repository"
-    SKILL = "skill"
-    ENVIRONMENT = "environment"
+
+
+class RequestedEntraRole(StrEnum):
+    EDITOR = "EvalHub.Editor"
+    ADMIN = "EvalHub.Admin"
+
+
+class AccessRequestStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    FULFILLED = "fulfilled"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class AccessRequestAction(StrEnum):
+    APPROVE = "approve"
+    FULFILL = "fulfill"
+    REJECT = "reject"
 
 
 class AuthorizationScope(BaseModel):
@@ -31,12 +48,9 @@ class AuthorizationScope(BaseModel):
     @field_validator("id")
     @classmethod
     def validate_id(cls, value: str) -> str:
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("scope id cannot be empty")
-        if len(cleaned) > 256:
-            raise ValueError("scope id cannot exceed 256 characters")
-        return cleaned
+        if value != "*":
+            raise ValueError("platform_admin is always global")
+        return value
 
 
 class ActorReference(BaseModel):
@@ -84,7 +98,7 @@ class AssignmentCreate(BaseModel):
 
     tenant_id: str
     principal_id: str
-    local_role: PlatformRole
+    local_role: PlatformRole = PlatformRole.PLATFORM_ADMIN
     scope: AuthorizationScope = Field(default_factory=AuthorizationScope)
     reason: str = Field(min_length=5, max_length=500)
     expires_at: datetime | None = None
@@ -148,6 +162,48 @@ class PaginatedAssignments(BaseModel):
     offset: int
 
 
+class AccessRequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requested_role: RequestedEntraRole
+    business_reason: str = Field(min_length=10, max_length=1000)
+
+
+class AccessRequestDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: AccessRequestAction
+    note: str = Field(min_length=5, max_length=1000)
+
+
+class AccessRequestRecord(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    id: str = Field(alias="_id")
+    tenant_id: str
+    principal_id: str
+    display_name: str
+    email: str | None = None
+    requested_role: RequestedEntraRole
+    business_reason: str
+    status: AccessRequestStatus
+    created_at: datetime
+    updated_at: datetime
+    decided_at: datetime | None = None
+    decided_by: ActorReference | None = None
+    decision_note: str | None = None
+    fulfilled_at: datetime | None = None
+
+
+class PaginatedAccessRequests(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AccessRequestRecord]
+    total: int
+    limit: int
+    offset: int
+
+
 class AuditEvent(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
@@ -155,11 +211,13 @@ class AuditEvent(BaseModel):
     event_type: str
     actor: ActorReference
     target: ActorReference
-    assignment_id: str
-    local_role: PlatformRole
-    scope: AuthorizationScope
     reason: str
     occurred_at: datetime
+    assignment_id: str | None = None
+    access_request_id: str | None = None
+    local_role: PlatformRole | None = None
+    requested_role: RequestedEntraRole | None = None
+    scope: AuthorizationScope | None = None
     request_id: str | None = None
 
 
