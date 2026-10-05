@@ -1,9 +1,8 @@
 from fastapi import APIRouter
-
 from src.api.dependencies import AuthorizationServiceDependency, CurrentUserDependency
+
 from src.models.authorization import AuthorizationContext
 from src.security.authorization_identity import identity_from_authenticated_user
-
 
 router = APIRouter(prefix="/auth", tags=["authorization"])
 

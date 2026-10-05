@@ -1,8 +1,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-
 from src.api.dependencies import AuthorizationServiceDependency, CurrentUserDependency
+
 from src.models.authorization import (
     AccessRequestCreate,
     AccessRequestRecord,
@@ -14,7 +14,6 @@ from src.repositories.authorization import (
 )
 from src.security.authorization_identity import identity_from_authenticated_user
 from src.services.authorization import AccessRequestAlreadySatisfiedError
-
 
 router = APIRouter(prefix="/access-requests", tags=["access-requests"])
 PageLimit = Annotated[int, Query(ge=1, le=100)]

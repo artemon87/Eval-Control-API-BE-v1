@@ -2,8 +2,8 @@ from collections.abc import Callable, Coroutine
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
-
 from src.api.dependencies import AuthorizationServiceDependency, CurrentUserDependency
+
 from src.security.authorization_identity import identity_from_authenticated_user
 from src.security.permissions import Permission
 from src.services.authorization import AuthorizationDeniedError

@@ -3,10 +3,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
+from bson.errors import InvalidId
 from pymongo import ReturnDocument
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import DuplicateKeyError
+from src.repositories.base import normalize_document
 
 from src.models.authorization import (
     AccessRequestAction,
@@ -17,7 +19,6 @@ from src.models.authorization import (
     AssignmentStatus,
     PrincipalRecord,
 )
-from src.repositories.base import normalize_document
 from src.security.authorization_identity import AuthorizationIdentity
 
 
@@ -196,7 +197,7 @@ class AuthorizationRepository:
     ) -> dict[str, Any]:
         try:
             object_id = ObjectId(assignment_id)
-        except Exception as exc:
+        except (InvalidId, TypeError) as exc:
             raise AssignmentNotFoundError("assignment not found") from exc
 
         now = datetime.now(UTC)
@@ -243,7 +244,7 @@ class AuthorizationRepository:
     ) -> dict[str, Any] | None:
         try:
             object_id = ObjectId(assignment_id)
-        except Exception:
+        except (InvalidId, TypeError):
             return None
         return _serialize(
             await self._assignments.find_one(
@@ -388,7 +389,7 @@ class AuthorizationRepository:
     ) -> dict[str, Any]:
         try:
             object_id = ObjectId(access_request_id)
-        except Exception as exc:
+        except (InvalidId, TypeError) as exc:
             raise AccessRequestNotFoundError("access request not found") from exc
         now = datetime.now(UTC)
         updated = await self._access_requests.find_one_and_update(
@@ -435,7 +436,7 @@ class AuthorizationRepository:
     ) -> dict[str, Any]:
         try:
             object_id = ObjectId(access_request_id)
-        except Exception as exc:
+        except (InvalidId, TypeError) as exc:
             raise AccessRequestNotFoundError("access request not found") from exc
 
         transitions = {

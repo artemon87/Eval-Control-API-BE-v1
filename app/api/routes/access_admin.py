@@ -1,8 +1,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-
 from src.api.dependencies import AuthorizationServiceDependency, CurrentUserDependency
+
 from src.models.authorization import (
     AccessRequestDecision,
     AccessRequestRecord,
@@ -10,8 +10,8 @@ from src.models.authorization import (
     AssignmentCreate,
     AssignmentRecord,
     AssignmentRevoke,
-    PaginatedAccessUsers,
     PaginatedAccessRequests,
+    PaginatedAccessUsers,
     PaginatedAssignments,
     PaginatedAuditEvents,
 )
@@ -29,11 +29,15 @@ from src.services.authorization import (
     PrincipalNotFoundError,
 )
 
-
 router = APIRouter(prefix="/admin/access", tags=["access-administration"])
 
 PageLimit = Annotated[int, Query(ge=1, le=100)]
 PageOffset = Annotated[int, Query(ge=0, le=100_000)]
+HTTP_422_UNPROCESSABLE_CONTENT = getattr(
+    status,
+    "HTTP_422_UNPROCESSABLE_CONTENT",
+    422,
+)
 
 
 def _request_id(request: Request) -> str | None:
@@ -53,7 +57,7 @@ def _translate_error(exc: Exception) -> HTTPException:
     if isinstance(exc, AccessRequestNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     if isinstance(exc, InvalidAssignmentError):
-        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        return HTTPException(status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
     raise exc
 
 

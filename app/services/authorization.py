@@ -10,8 +10,8 @@ from src.models.authorization import (
     AssignmentRevoke,
     AuditEvent,
     AuthorizationContext,
-    PaginatedAccessUsers,
     PaginatedAccessRequests,
+    PaginatedAccessUsers,
     PaginatedAssignments,
     PaginatedAuditEvents,
 )
