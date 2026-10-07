@@ -2,26 +2,40 @@ from enum import StrEnum
 
 
 class Permission(StrEnum):
+    EVAL_ANNOTATE = "evals.annotate"
+    EVAL_EDIT = "evals.edit"
+    SUGGESTION_MODERATE = "suggestions.moderate"
     ACCESS_MANAGE = "access.manage"
     AUDIT_READ = "audit.read"
 
 
-class PlatformRole(StrEnum):
-    PLATFORM_ADMIN = "platform_admin"
+class EvalHubRole(StrEnum):
+    EDITOR = "editor"
+    ADMIN = "admin"
 
 
-ROLE_PERMISSIONS: dict[PlatformRole, frozenset[Permission]] = {
-    PlatformRole.PLATFORM_ADMIN: frozenset(Permission),
+ROLE_PERMISSIONS: dict[EvalHubRole, frozenset[Permission]] = {
+    EvalHubRole.EDITOR: frozenset(
+        {
+            Permission.EVAL_ANNOTATE,
+            Permission.EVAL_EDIT,
+        }
+    ),
+    EvalHubRole.ADMIN: frozenset(Permission),
 }
 
 
-ROLE_ENTRA_PREREQUISITES: dict[PlatformRole, frozenset[str]] = {
-    PlatformRole.PLATFORM_ADMIN: frozenset({"EvalHub.Admin", "admin"}),
-}
+def parse_evalhub_role(value: object) -> EvalHubRole:
+    """Parse current roles and the previous local platform-admin value."""
+    if value == "platform_admin":
+        return EvalHubRole.ADMIN
+    return EvalHubRole(value)
 
 
-def entra_allows_platform_role(
-    entra_roles: frozenset[str],
-    platform_role: PlatformRole,
-) -> bool:
-    return bool(entra_roles & ROLE_ENTRA_PREREQUISITES[platform_role])
+def effective_permissions(
+    roles: frozenset[EvalHubRole],
+) -> frozenset[Permission]:
+    permissions: set[Permission] = set()
+    for role in roles:
+        permissions.update(ROLE_PERMISSIONS[role])
+    return frozenset(permissions)

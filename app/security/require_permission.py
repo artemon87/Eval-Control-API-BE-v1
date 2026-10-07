@@ -31,7 +31,7 @@ def require_permission(
     return dependency
 
 
-PlatformAdminDependency = Annotated[
+EvalHubAdminDependency = Annotated[
     Any,
     Depends(require_permission(Permission.ACCESS_MANAGE)),
 ]

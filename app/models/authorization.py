@@ -3,7 +3,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.security.permissions import Permission, PlatformRole
+from src.security.permissions import EvalHubRole, Permission, parse_evalhub_role
 
 
 class PrincipalType(StrEnum):
@@ -20,11 +20,6 @@ class ScopeType(StrEnum):
     GLOBAL = "global"
 
 
-class RequestedEntraRole(StrEnum):
-    EDITOR = "EvalHub.Editor"
-    ADMIN = "EvalHub.Admin"
-
-
 class AccessRequestStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -35,7 +30,6 @@ class AccessRequestStatus(StrEnum):
 
 class AccessRequestAction(StrEnum):
     APPROVE = "approve"
-    FULFILL = "fulfill"
     REJECT = "reject"
 
 
@@ -49,7 +43,7 @@ class AuthorizationScope(BaseModel):
     @classmethod
     def validate_id(cls, value: str) -> str:
         if value != "*":
-            raise ValueError("platform_admin is always global")
+            raise ValueError("EvalHub role assignments are currently global")
         return value
 
 
@@ -69,7 +63,6 @@ class PrincipalRecord(BaseModel):
     principal_type: PrincipalType = PrincipalType.USER
     display_name: str
     email: str | None = None
-    entra_roles_last_seen: list[str] = Field(default_factory=list)
     first_login_at: datetime
     last_login_at: datetime
     updated_at: datetime
@@ -81,7 +74,7 @@ class AssignmentRecord(BaseModel):
     id: str = Field(alias="_id")
     tenant_id: str
     principal_id: str
-    local_role: PlatformRole
+    local_role: EvalHubRole
     scope: AuthorizationScope
     status: AssignmentStatus
     reason: str
@@ -92,13 +85,18 @@ class AssignmentRecord(BaseModel):
     revoked_by: ActorReference | None = None
     revocation_reason: str | None = None
 
+    @field_validator("local_role", mode="before")
+    @classmethod
+    def normalize_legacy_role(cls, value: object) -> EvalHubRole:
+        return parse_evalhub_role(value)
+
 
 class AssignmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str
     principal_id: str
-    local_role: PlatformRole = PlatformRole.PLATFORM_ADMIN
+    local_role: EvalHubRole
     scope: AuthorizationScope = Field(default_factory=AuthorizationScope)
     reason: str = Field(min_length=5, max_length=500)
     expires_at: datetime | None = None
@@ -125,8 +123,7 @@ class AuthorizationContext(BaseModel):
 
     tenant_id: str
     principal_id: str
-    entra_roles: list[str]
-    local_roles: list[PlatformRole]
+    roles: list[EvalHubRole]
     permissions: list[Permission]
 
 
@@ -137,8 +134,7 @@ class AccessUser(BaseModel):
     principal_id: str
     display_name: str
     email: str | None
-    entra_roles_last_seen: list[str]
-    entra_roles_last_confirmed_at: datetime
+    roles: list[EvalHubRole]
     assignments: list[AssignmentRecord]
     effective_permissions: list[Permission]
     last_login_at: datetime
@@ -165,8 +161,16 @@ class PaginatedAssignments(BaseModel):
 class AccessRequestCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    requested_role: RequestedEntraRole
+    requested_role: EvalHubRole
     business_reason: str = Field(min_length=10, max_length=1000)
+
+    @field_validator("requested_role", mode="before")
+    @classmethod
+    def normalize_legacy_role(cls, value: object) -> object:
+        return {
+            "EvalHub.Editor": EvalHubRole.EDITOR,
+            "EvalHub.Admin": EvalHubRole.ADMIN,
+        }.get(value, value)
 
 
 class AccessRequestDecision(BaseModel):
@@ -184,7 +188,7 @@ class AccessRequestRecord(BaseModel):
     principal_id: str
     display_name: str
     email: str | None = None
-    requested_role: RequestedEntraRole
+    requested_role: EvalHubRole
     business_reason: str
     status: AccessRequestStatus
     created_at: datetime
@@ -193,6 +197,14 @@ class AccessRequestRecord(BaseModel):
     decided_by: ActorReference | None = None
     decision_note: str | None = None
     fulfilled_at: datetime | None = None
+
+    @field_validator("requested_role", mode="before")
+    @classmethod
+    def normalize_legacy_role(cls, value: object) -> object:
+        return {
+            "EvalHub.Editor": EvalHubRole.EDITOR,
+            "EvalHub.Admin": EvalHubRole.ADMIN,
+        }.get(value, value)
 
 
 class PaginatedAccessRequests(BaseModel):
@@ -215,10 +227,23 @@ class AuditEvent(BaseModel):
     occurred_at: datetime
     assignment_id: str | None = None
     access_request_id: str | None = None
-    local_role: PlatformRole | None = None
-    requested_role: RequestedEntraRole | None = None
+    local_role: EvalHubRole | None = None
+    requested_role: EvalHubRole | None = None
     scope: AuthorizationScope | None = None
     request_id: str | None = None
+
+    @field_validator("local_role", mode="before")
+    @classmethod
+    def normalize_legacy_local_role(cls, value: object) -> object:
+        return None if value is None else parse_evalhub_role(value)
+
+    @field_validator("requested_role", mode="before")
+    @classmethod
+    def normalize_legacy_requested_role(cls, value: object) -> object:
+        return {
+            "EvalHub.Editor": EvalHubRole.EDITOR,
+            "EvalHub.Admin": EvalHubRole.ADMIN,
+        }.get(value, value)
 
 
 class PaginatedAuditEvents(BaseModel):

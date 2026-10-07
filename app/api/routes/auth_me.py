@@ -7,7 +7,7 @@ from src.security.authorization_identity import identity_from_authenticated_user
 router = APIRouter(prefix="/auth", tags=["authorization"])
 
 
-@router.get("/me", response_model=AuthorizationContext)
+@router.get("/me")
 async def get_my_authorization(
     current_user: CurrentUserDependency,
     service: AuthorizationServiceDependency,

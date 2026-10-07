@@ -57,6 +57,7 @@ class AuthorizationRepository:
         self,
         database: AsyncDatabase[dict[str, Any]],
     ) -> None:
+        self._database = database
         self._principals: AsyncCollection[dict[str, Any]] = database[
             self.PRINCIPALS
         ]
@@ -85,10 +86,10 @@ class AuthorizationRepository:
                     "principal_type": "user",
                     "display_name": identity.display_name,
                     "email": identity.email,
-                    "entra_roles_last_seen": sorted(identity.entra_roles),
                     "last_login_at": now,
                     "updated_at": now,
                 },
+                "$unset": {"entra_roles_last_seen": ""},
                 "$setOnInsert": {"first_login_at": now},
             },
             upsert=True,
@@ -138,6 +139,7 @@ class AuthorizationRepository:
         target: ActorReference,
         *,
         request_id: str | None,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(UTC)
         await self._assignments.update_many(
@@ -151,6 +153,7 @@ class AuthorizationRepository:
                 "expires_at": {"$lte": now},
             },
             {"$set": {"status": AssignmentStatus.EXPIRED}},
+            session=session,
         )
         document = {
             **assignment.model_dump(mode="python"),
@@ -162,7 +165,7 @@ class AuthorizationRepository:
             "revocation_reason": None,
         }
         try:
-            result = await self._assignments.insert_one(document)
+            result = await self._assignments.insert_one(document, session=session)
         except DuplicateKeyError as exc:
             raise AssignmentAlreadyExistsError(
                 "an active assignment already exists for this user, role, and scope"
@@ -180,7 +183,8 @@ class AuthorizationRepository:
                 "reason": assignment.reason,
                 "occurred_at": now,
                 "request_id": request_id,
-            }
+            },
+            session=session,
         )
         document["_id"] = assignment_id
         return document
@@ -263,7 +267,7 @@ class AuthorizationRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         query: dict[str, Any] = {
             "tenant_id": tenant_id,
-            "local_role": "platform_admin",
+            "local_role": {"$in": ["editor", "admin", "platform_admin"]},
         }
         if principal_id:
             query["principal_id"] = principal_id
@@ -333,7 +337,7 @@ class AuthorizationRepository:
             result = await self._access_requests.insert_one(document)
         except DuplicateKeyError as exc:
             raise AccessRequestConflictError(
-                "an open request for this Entra role already exists"
+                "an open request for this EvalHub role already exists"
             ) from exc
 
         access_request_id = str(result.inserted_id)
@@ -380,6 +384,22 @@ class AuthorizationRepository:
         )
         return [dict(_serialize(item) or {}) async for item in cursor], total
 
+    async def get_access_request(
+        self,
+        access_request_id: str,
+        *,
+        tenant_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            object_id = ObjectId(access_request_id)
+        except (InvalidId, TypeError):
+            return None
+        return _serialize(
+            await self._access_requests.find_one(
+                {"_id": object_id, "tenant_id": tenant_id}
+            )
+        )
+
     async def cancel_access_request(
         self,
         access_request_id: str,
@@ -397,7 +417,7 @@ class AuthorizationRepository:
                 "_id": object_id,
                 "tenant_id": identity.tenant_id,
                 "principal_id": identity.principal_id,
-                "status": {"$in": [AccessRequestStatus.PENDING, AccessRequestStatus.APPROVED]},
+                "status": AccessRequestStatus.PENDING,
             },
             {"$set": {"status": AccessRequestStatus.CANCELLED, "updated_at": now}},
             return_document=ReturnDocument.AFTER,
@@ -433,6 +453,7 @@ class AuthorizationRepository:
         note: str,
         *,
         request_id: str | None,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         try:
             object_id = ObjectId(access_request_id)
@@ -443,10 +464,6 @@ class AuthorizationRepository:
             AccessRequestAction.APPROVE: (
                 [AccessRequestStatus.PENDING],
                 AccessRequestStatus.APPROVED,
-            ),
-            AccessRequestAction.FULFILL: (
-                [AccessRequestStatus.APPROVED],
-                AccessRequestStatus.FULFILLED,
             ),
             AccessRequestAction.REJECT: (
                 [AccessRequestStatus.PENDING, AccessRequestStatus.APPROVED],
@@ -462,9 +479,6 @@ class AuthorizationRepository:
             "decided_by": actor.model_dump(mode="python"),
             "decision_note": note,
         }
-        if action is AccessRequestAction.FULFILL:
-            updates["fulfilled_at"] = now
-
         updated = await self._access_requests.find_one_and_update(
             {
                 "_id": object_id,
@@ -473,6 +487,7 @@ class AuthorizationRepository:
             },
             {"$set": updates},
             return_document=ReturnDocument.AFTER,
+            session=session,
         )
         serialized = _serialize(updated)
         if serialized is None:
@@ -494,6 +509,38 @@ class AuthorizationRepository:
                 "reason": note,
                 "occurred_at": now,
                 "request_id": request_id,
-            }
+            },
+            session=session,
         )
         return serialized
+
+    async def approve_access_request(
+        self,
+        access_request_id: str,
+        tenant_id: str,
+        actor: ActorReference,
+        target: ActorReference,
+        assignment: AssignmentCreate,
+        note: str,
+        *,
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        """Grant the role and close the request in one MongoDB transaction."""
+        async with self._database.client.start_session() as session:
+            async with await session.start_transaction():
+                await self.create_assignment(
+                    assignment,
+                    actor,
+                    target,
+                    request_id=request_id,
+                    session=session,
+                )
+                return await self.decide_access_request(
+                    access_request_id,
+                    tenant_id,
+                    actor,
+                    AccessRequestAction.APPROVE,
+                    note,
+                    request_id=request_id,
+                    session=session,
+                )

@@ -1,6 +1,7 @@
 from src.models.authorization import (
     AccessRequestCreate,
     AccessRequestDecision,
+    AccessRequestAction,
     AccessRequestRecord,
     AccessRequestStatus,
     AccessUser,
@@ -10,18 +11,22 @@ from src.models.authorization import (
     AssignmentRevoke,
     AuditEvent,
     AuthorizationContext,
+    AuthorizationScope,
     PaginatedAccessRequests,
     PaginatedAccessUsers,
     PaginatedAssignments,
     PaginatedAuditEvents,
 )
-from src.repositories.authorization import AuthorizationRepository
+from src.repositories.authorization import (
+    AccessRequestNotFoundError,
+    AuthorizationRepository,
+)
 from src.security.authorization_identity import AuthorizationIdentity
 from src.security.permissions import (
-    ROLE_PERMISSIONS,
+    EvalHubRole,
     Permission,
-    PlatformRole,
-    entra_allows_platform_role,
+    effective_permissions,
+    parse_evalhub_role,
 )
 
 
@@ -30,10 +35,6 @@ class AuthorizationDeniedError(RuntimeError):
 
 
 class PrincipalNotFoundError(RuntimeError):
-    pass
-
-
-class InvalidAssignmentError(RuntimeError):
     pass
 
 
@@ -60,27 +61,23 @@ class AuthorizationService:
             active_only=True,
             limit=100,
         )
-        local_roles: set[PlatformRole] = set()
-        permissions: set[Permission] = set()
+        roles: set[EvalHubRole] = set()
 
         for document in assignments:
             try:
-                role = PlatformRole(document["local_role"])
-            except ValueError:
-                # Ignore legacy moderator/evaluation_admin records after the
-                # simplified authorization model is deployed.
+                role = parse_evalhub_role(document["local_role"])
+            except (TypeError, ValueError):
                 continue
-            if not entra_allows_platform_role(identity.entra_roles, role):
-                continue
-            local_roles.add(role)
-            permissions.update(ROLE_PERMISSIONS[role])
+            roles.add(role)
 
         return AuthorizationContext(
             tenant_id=identity.tenant_id,
             principal_id=identity.principal_id,
-            entra_roles=sorted(identity.entra_roles),
-            local_roles=sorted(local_roles, key=str),
-            permissions=sorted(permissions, key=str),
+            roles=sorted(roles, key=str),
+            permissions=sorted(
+                effective_permissions(frozenset(roles)),
+                key=str,
+            ),
         )
 
     async def require_permission(
@@ -120,16 +117,9 @@ class AuthorizationService:
             assignments = [
                 AssignmentRecord.model_validate(item)
                 for item in documents
-                if item.get("local_role") == PlatformRole.PLATFORM_ADMIN
+                if item.get("local_role") in {"editor", "admin", "platform_admin"}
             ]
-            seen_roles = frozenset(principal.entra_roles_last_seen)
-            permissions: set[Permission] = set()
-            for assignment in assignments:
-                if (
-                    assignment.local_role is PlatformRole.PLATFORM_ADMIN
-                    and entra_allows_platform_role(seen_roles, assignment.local_role)
-                ):
-                    permissions.update(ROLE_PERMISSIONS[assignment.local_role])
+            roles = frozenset(assignment.local_role for assignment in assignments)
 
             items.append(
                 AccessUser(
@@ -137,10 +127,12 @@ class AuthorizationService:
                     principal_id=principal.principal_id,
                     display_name=principal.display_name,
                     email=principal.email,
-                    entra_roles_last_seen=principal.entra_roles_last_seen,
-                    entra_roles_last_confirmed_at=principal.updated_at,
+                    roles=sorted(roles, key=str),
                     assignments=assignments,
-                    effective_permissions=sorted(permissions, key=str),
+                    effective_permissions=sorted(
+                        effective_permissions(roles),
+                        key=str,
+                    ),
                     last_login_at=principal.last_login_at,
                 )
             )
@@ -171,7 +163,7 @@ class AuthorizationService:
             items=[
                 AssignmentRecord.model_validate(item)
                 for item in documents
-                if item.get("local_role") == PlatformRole.PLATFORM_ADMIN
+                if item.get("local_role") in {"editor", "admin", "platform_admin"}
             ],
             total=total,
             limit=limit,
@@ -199,14 +191,6 @@ class AuthorizationService:
             raise PrincipalNotFoundError(
                 "user is not known to EvalHub; ask the user to sign in once"
             )
-        if not entra_allows_platform_role(
-            frozenset(target.entra_roles_last_seen),
-            payload.local_role,
-        ):
-            raise InvalidAssignmentError(
-                "the user's last confirmed Entra role does not satisfy this platform role"
-            )
-
         actor_ref = ActorReference(
             tenant_id=actor.tenant_id,
             principal_id=actor.principal_id,
@@ -296,13 +280,15 @@ class AuthorizationService:
         request_id: str | None,
     ) -> AccessRequestRecord:
         await self._repository.upsert_principal(identity)
-        if payload.requested_role in identity.entra_roles:
+        context = await self.resolve(identity, record_login=False)
+        existing_roles = set(context.roles)
+        if payload.requested_role in existing_roles:
             raise AccessRequestAlreadySatisfiedError(
-                "you already have the requested Entra role"
+                "you already have the requested EvalHub role"
             )
-        if "EvalHub.Admin" in identity.entra_roles:
+        if EvalHubRole.ADMIN in existing_roles:
             raise AccessRequestAlreadySatisfiedError(
-                "Entra Admin already includes Editor access"
+                "EvalHub Admin already includes Editor access"
             )
         document = await self._repository.create_access_request(
             identity,
@@ -376,11 +362,54 @@ class AuthorizationService:
         request_id: str | None,
     ) -> AccessRequestRecord:
         await self.require_permission(actor, Permission.ACCESS_MANAGE)
+        request_document = await self._repository.get_access_request(
+            access_request_id,
+            tenant_id=actor.tenant_id,
+        )
+        if request_document is None:
+            raise AccessRequestNotFoundError("access request not found")
+        access_request = AccessRequestRecord.model_validate(request_document)
+        if access_request.status is not AccessRequestStatus.PENDING:
+            raise AccessRequestNotFoundError(
+                "access request is no longer pending"
+            )
+        if access_request.principal_id == actor.principal_id:
+            raise AuthorizationDeniedError("self-approval is not allowed")
+
         actor_ref = ActorReference(
             tenant_id=actor.tenant_id,
             principal_id=actor.principal_id,
             display_name=actor.display_name,
         )
+        if payload.action is AccessRequestAction.APPROVE:
+            target = await self._repository.get_principal(
+                access_request.tenant_id,
+                access_request.principal_id,
+            )
+            if target is None:
+                raise PrincipalNotFoundError("requesting user is no longer known")
+            target_ref = ActorReference(
+                tenant_id=target.tenant_id,
+                principal_id=target.principal_id,
+                display_name=target.display_name,
+            )
+            document = await self._repository.approve_access_request(
+                access_request_id,
+                actor.tenant_id,
+                actor_ref,
+                target_ref,
+                AssignmentCreate(
+                    tenant_id=access_request.tenant_id,
+                    principal_id=access_request.principal_id,
+                    local_role=access_request.requested_role,
+                    scope=AuthorizationScope(),
+                    reason=payload.note,
+                ),
+                payload.note,
+                request_id=request_id,
+            )
+            return AccessRequestRecord.model_validate(document)
+
         document = await self._repository.decide_access_request(
             access_request_id,
             actor.tenant_id,

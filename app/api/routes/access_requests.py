@@ -25,7 +25,7 @@ def _request_id(request: Request) -> str | None:
     return value[:128] if value else None
 
 
-@router.post("", response_model=AccessRequestRecord, status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_access_request(
     payload: AccessRequestCreate,
     request: Request,
@@ -42,7 +42,7 @@ async def create_access_request(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-@router.get("/me", response_model=PaginatedAccessRequests)
+@router.get("/me")
 async def list_my_access_requests(
     current_user: CurrentUserDependency,
     service: AuthorizationServiceDependency,
@@ -56,7 +56,7 @@ async def list_my_access_requests(
     )
 
 
-@router.post("/{access_request_id}/cancel", response_model=AccessRequestRecord)
+@router.post("/{access_request_id}/cancel")
 async def cancel_access_request(
     access_request_id: str,
     request: Request,

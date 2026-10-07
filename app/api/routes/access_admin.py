@@ -25,7 +25,6 @@ from src.security.authorization_identity import identity_from_authenticated_user
 from src.services.authorization import (
     AccessRequestAlreadySatisfiedError,
     AuthorizationDeniedError,
-    InvalidAssignmentError,
     PrincipalNotFoundError,
 )
 
@@ -33,11 +32,6 @@ router = APIRouter(prefix="/admin/access", tags=["access-administration"])
 
 PageLimit = Annotated[int, Query(ge=1, le=100)]
 PageOffset = Annotated[int, Query(ge=0, le=100_000)]
-HTTP_422_UNPROCESSABLE_CONTENT = getattr(
-    status,
-    "HTTP_422_UNPROCESSABLE_CONTENT",
-    422,
-)
 
 
 def _request_id(request: Request) -> str | None:
@@ -56,12 +50,10 @@ def _translate_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, AccessRequestNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    if isinstance(exc, InvalidAssignmentError):
-        return HTTPException(status_code=HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
     raise exc
 
 
-@router.get("/users", response_model=PaginatedAccessUsers)
+@router.get("/users")
 async def list_access_users(
     current_user: CurrentUserDependency,
     service: AuthorizationServiceDependency,
@@ -80,7 +72,7 @@ async def list_access_users(
         raise _translate_error(exc) from exc
 
 
-@router.get("/assignments", response_model=PaginatedAssignments)
+@router.get("/assignments")
 async def list_assignments(
     current_user: CurrentUserDependency,
     service: AuthorizationServiceDependency,
@@ -101,7 +93,6 @@ async def list_assignments(
 
 @router.post(
     "/assignments",
-    response_model=AssignmentRecord,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_assignment(
@@ -120,10 +111,7 @@ async def create_assignment(
         raise _translate_error(exc) from exc
 
 
-@router.post(
-    "/assignments/{assignment_id}/revoke",
-    response_model=AssignmentRecord,
-)
+@router.post("/assignments/{assignment_id}/revoke")
 async def revoke_assignment(
     assignment_id: str,
     payload: AssignmentRevoke,
@@ -142,7 +130,7 @@ async def revoke_assignment(
         raise _translate_error(exc) from exc
 
 
-@router.get("/audit", response_model=PaginatedAuditEvents)
+@router.get("/audit")
 async def list_audit_events(
     current_user: CurrentUserDependency,
     service: AuthorizationServiceDependency,
@@ -159,7 +147,7 @@ async def list_audit_events(
         raise _translate_error(exc) from exc
 
 
-@router.get("/requests", response_model=PaginatedAccessRequests)
+@router.get("/requests")
 async def list_access_requests(
     current_user: CurrentUserDependency,
     service: AuthorizationServiceDependency,
@@ -178,10 +166,7 @@ async def list_access_requests(
         raise _translate_error(exc) from exc
 
 
-@router.post(
-    "/requests/{access_request_id}/decision",
-    response_model=AccessRequestRecord,
-)
+@router.post("/requests/{access_request_id}/decision")
 async def decide_access_request(
     access_request_id: str,
     payload: AccessRequestDecision,
