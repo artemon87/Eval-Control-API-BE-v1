@@ -21,6 +21,7 @@ from src.repositories.authorization import (
     AuthorizationRepository,
 )
 from src.security.authorization_identity import AuthorizationIdentity
+from src.security.permissions import EvalHubRole
 
 
 class FakeInsertResult:
@@ -116,7 +117,6 @@ def identity() -> AuthorizationIdentity:
         principal_id="user-1",
         display_name="Test User",
         email="test@example.com",
-        entra_roles=frozenset({"EvalHub.Admin"}),
     )
 
 
@@ -136,7 +136,6 @@ def principal_document(principal_id: str = "user-1") -> dict[str, Any]:
         "principal_type": "user",
         "display_name": "Test User",
         "email": "test@example.com",
-        "entra_roles_last_seen": ["EvalHub.Admin"],
         "first_login_at": now,
         "last_login_at": now,
         "updated_at": now,
@@ -148,8 +147,8 @@ def assignment_document(object_id: ObjectId | None = None) -> dict[str, Any]:
         "_id": object_id or ObjectId(),
         "tenant_id": "tenant-1",
         "principal_id": "user-1",
-        "local_role": "platform_admin",
-        "scope": {"type": "global", "id": "*"},
+        "local_role": "admin",
+        "scope": {"type": "global", "resource": None, "constraints": {}},
         "status": "active",
         "reason": "Needed for administration",
         "granted_by": actor().model_dump(mode="python"),
@@ -194,7 +193,7 @@ async def test_upsert_get_and_list_principals(
     result = await repository.upsert_principal(identity())
     assert result.principal_id == "user-1"
     update = collection.calls[-1][1][1]
-    assert update["$set"]["entra_roles_last_seen"] == ["EvalHub.Admin"]
+    assert update["$unset"] == {"entra_roles_last_seen": ""}
 
     collection.find_one_result = principal_document()
     assert await repository.get_principal("tenant-1", "user-1") is not None
@@ -211,7 +210,9 @@ async def test_upsert_get_and_list_principals(
     )
     assert total == 1
     assert principals[0].display_name == "Test User"
-    query = next(call for call in collection.calls if call[0] == "count_documents")[1][0]
+    query = next(
+        call for call in collection.calls if call[0] == "count_documents"
+    )[1][0]
     assert query["$or"][0]["display_name"]["$regex"] == r"Test\ \(Admin\)"
     assert collection.last_cursor is not None
     assert collection.last_cursor.skip_value == 2
@@ -230,6 +231,7 @@ async def test_create_assignment_writes_assignment_and_audit(
     payload = AssignmentCreate(
         tenant_id="tenant-1",
         principal_id="user-1",
+        local_role=EvalHubRole.ADMIN,
         reason="Needed for administration",
         expires_at=datetime.now(UTC) + timedelta(days=1),
     )
@@ -261,6 +263,7 @@ async def test_create_assignment_translates_duplicate_key(
     payload = AssignmentCreate(
         tenant_id="tenant-1",
         principal_id="user-1",
+        local_role=EvalHubRole.ADMIN,
         reason="Needed for administration",
     )
     with pytest.raises(AssignmentAlreadyExistsError, match="already exists"):
@@ -336,7 +339,9 @@ async def test_list_assignments_and_audit_build_queries(
     )
     assert total == 1 and len(items) == 1
     query = assignments.calls[0][1][0]
-    assert query["local_role"] == "platform_admin"
+    assert query["local_role"] == {
+        "$in": ["editor", "admin", "platform_admin"]
+    }
     assert query["principal_id"] == "user-1"
     assert query["status"].value == "active"
     await repository.list_assignments(tenant_id="tenant-1")
@@ -369,7 +374,9 @@ async def test_create_and_list_access_requests(
         identity(), payload, request_id="request-1"
     )
     assert created["status"].value == "pending"
-    audit_document = database.collections[AuthorizationRepository.AUDIT_EVENTS].calls[-1][1][0]
+    audit_document = database.collections[AuthorizationRepository.AUDIT_EVENTS].calls[
+        -1
+    ][1][0]
     assert audit_document["event_type"] == "authorization.access_request.created"
 
     requests = database.collections[AuthorizationRepository.ACCESS_REQUESTS]
@@ -383,7 +390,9 @@ async def test_create_and_list_access_requests(
         offset=2,
     )
     assert total == 1 and len(items) == 1
-    query = next(call for call in requests.calls if call[0] == "count_documents")[1][0]
+    query = next(
+        call for call in requests.calls if call[0] == "count_documents"
+    )[1][0]
     assert query["principal_id"] == "user-1"
     assert query["status"].value == "pending"
     await repository.list_access_requests(
@@ -425,7 +434,9 @@ async def test_cancel_access_request_success_and_failure_paths(
         str(object_id), identity(), request_id="request-1"
     )
     assert cancelled["status"] == "cancelled"
-    audit_document = database.collections[AuthorizationRepository.AUDIT_EVENTS].calls[-1][1][0]
+    audit_document = database.collections[AuthorizationRepository.AUDIT_EVENTS].calls[
+        -1
+    ][1][0]
     assert audit_document["event_type"] == "authorization.access_request.cancelled"
 
     requests.find_one_and_update_result = None
@@ -439,11 +450,10 @@ async def test_cancel_access_request_success_and_failure_paths(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("action", "expected_status", "fulfilled"),
+    ("action", "expected_status"),
     [
-        (AccessRequestAction.APPROVE, "approved", False),
-        (AccessRequestAction.FULFILL, "fulfilled", True),
-        (AccessRequestAction.REJECT, "rejected", False),
+        (AccessRequestAction.APPROVE, "approved"),
+        (AccessRequestAction.REJECT, "rejected"),
     ],
 )
 async def test_decide_access_request_transitions_and_audits(
@@ -451,7 +461,6 @@ async def test_decide_access_request_transitions_and_audits(
     database: FakeDatabase,
     action: AccessRequestAction,
     expected_status: str,
-    fulfilled: bool,
 ) -> None:
     requests = database.collections[AuthorizationRepository.ACCESS_REQUESTS]
     object_id = ObjectId()
@@ -469,8 +478,10 @@ async def test_decide_access_request_transitions_and_audits(
     )
     assert result["status"] == expected_status
     updates = requests.calls[-1][1][1]["$set"]
-    assert ("fulfilled_at" in updates) is fulfilled
-    audit_document = database.collections[AuthorizationRepository.AUDIT_EVENTS].calls[-1][1][0]
+    assert "fulfilled_at" not in updates
+    audit_document = database.collections[AuthorizationRepository.AUDIT_EVENTS].calls[
+        -1
+    ][1][0]
     assert audit_document["event_type"].endswith(expected_status)
 
 

@@ -10,13 +10,15 @@ from src.models.authorization import (
     AccessRequestDecision,
     AssignmentCreate,
     AuthorizationScope,
+    ResourceContext,
 )
 from src.security.authorization_identity import identity_from_authenticated_user
 from src.security.permissions import (
     ROLE_PERMISSIONS,
+    EvalHubRole,
     Permission,
-    PlatformRole,
-    entra_allows_platform_role,
+    ResourceType,
+    parse_evalhub_role,
 )
 
 
@@ -27,8 +29,6 @@ def current_user(**overrides: Any) -> Any:
         "object_id": " user-1 ",
         "display_name": "Test User",
         "email": "test@example.com",
-        "entra_roles": [" EvalHub.Admin ", "", "EvalHub.Admin"],
-        "role": SimpleNamespace(value="viewer"),
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -41,16 +41,13 @@ def test_identity_normalizes_authenticated_user() -> None:
     assert identity.principal_id == "user-1"
     assert identity.display_name == "Test User"
     assert identity.email == "test@example.com"
-    assert identity.entra_roles == frozenset({"EvalHub.Admin"})
 
 
-def test_identity_uses_fallback_role_and_display_name() -> None:
+def test_identity_uses_principal_id_as_display_name_fallback() -> None:
     identity = identity_from_authenticated_user(
-        current_user(display_name=None, email=None, entra_roles=[])
+        current_user(display_name=None, email=None)
     )
-
     assert identity.display_name == "user-1"
-    assert identity.entra_roles == frozenset({"viewer"})
 
 
 @pytest.mark.parametrize(
@@ -69,75 +66,101 @@ def test_identity_rejects_invalid_authenticated_user(
         identity_from_authenticated_user(current_user(**overrides))
 
 
-def test_platform_admin_permissions_and_entra_prerequisite() -> None:
-    assert ROLE_PERMISSIONS[PlatformRole.PLATFORM_ADMIN] == frozenset(Permission)
-    assert entra_allows_platform_role(
-        frozenset({"EvalHub.Admin"}), PlatformRole.PLATFORM_ADMIN
+def test_roles_are_owned_by_evalhub_and_parse_legacy_values() -> None:
+    assert ROLE_PERMISSIONS[EvalHubRole.EDITOR] == frozenset(
+        {Permission.EVAL_ANNOTATE, Permission.EVAL_EDIT}
     )
-    assert entra_allows_platform_role(
-        frozenset({"admin"}), PlatformRole.PLATFORM_ADMIN
+    assert ROLE_PERMISSIONS[EvalHubRole.ADMIN] == frozenset(Permission)
+    assert parse_evalhub_role("editor") is EvalHubRole.EDITOR
+    assert parse_evalhub_role("EvalHub.Editor") is EvalHubRole.EDITOR
+    assert parse_evalhub_role("EvalHub.Admin") is EvalHubRole.ADMIN
+    assert parse_evalhub_role("platform_admin") is EvalHubRole.ADMIN
+
+
+def test_scope_accepts_legacy_global_and_matches_resource_constraints() -> None:
+    legacy = AuthorizationScope.model_validate({"type": "global", "id": "*"})
+    assert legacy.canonical_key() == "global"
+
+    e2e = AuthorizationScope(
+        type="resource",
+        resource=ResourceType.EVALUATION,
+        constraints={"eval_type": ["E2E"]},
     )
-    assert not entra_allows_platform_role(
-        frozenset({"EvalHub.Editor"}), PlatformRole.PLATFORM_ADMIN
+    assert e2e.allows(
+        ResourceContext(resource="evaluation", attributes={"eval_type": "e2e"})
+    )
+    assert not e2e.allows(
+        ResourceContext(resource="evaluation", attributes={"eval_type": "unit"})
     )
 
 
-def test_authorization_scope_only_accepts_global_wildcard() -> None:
-    assert AuthorizationScope().id == "*"
-    with pytest.raises(ValidationError, match="always global"):
-        AuthorizationScope(id="repository-1")
-    with pytest.raises(ValidationError):
-        AuthorizationScope(id="*", unexpected=True)  # type: ignore[call-arg]
+def test_scope_denies_when_a_future_constraint_is_missing() -> None:
+    scoped = AuthorizationScope(
+        type="resource",
+        resource="evaluation",
+        constraints={"eval_type": ["unit"], "category": ["platform"]},
+    )
+    assert not scoped.allows(
+        ResourceContext(resource="evaluation", attributes={"eval_type": "unit"})
+    )
 
 
-def test_assignment_expiration_normalizes_naive_future_datetime() -> None:
-    future = datetime(2099, 1, 1)  # noqa: DTZ001 - intentionally exercises naive input
+def test_assignment_role_scope_and_expiration_validation() -> None:
+    future = datetime(2099, 1, 1)  # noqa: DTZ001 - exercises normalization
     payload = AssignmentCreate(
         tenant_id="tenant-1",
         principal_id="user-1",
-        reason="Valid platform administration reason",
+        local_role=EvalHubRole.EDITOR,
+        scope=AuthorizationScope(
+            type="resource",
+            resource="evaluation",
+            constraints={"eval_type": ["e2e"]},
+        ),
+        reason="Needed for evaluation work",
         expires_at=future,
     )
-
-    assert payload.local_role is PlatformRole.PLATFORM_ADMIN
     assert payload.expires_at is not None
     assert payload.expires_at.tzinfo is UTC
 
-
-def test_assignment_expiration_accepts_none_and_rejects_past() -> None:
-    payload = AssignmentCreate(
-        tenant_id="tenant-1",
-        principal_id="user-1",
-        reason="Valid platform administration reason",
-        expires_at=None,
-    )
-    assert payload.expires_at is None
+    with pytest.raises(ValidationError, match="admin assignments must use the global"):
+        AssignmentCreate(
+            tenant_id="tenant-1",
+            principal_id="user-1",
+            local_role=EvalHubRole.ADMIN,
+            scope=AuthorizationScope(
+                type="resource",
+                resource="evaluation",
+                constraints={"eval_type": ["e2e"]},
+            ),
+            reason="Invalid scoped administrator",
+        )
 
     with pytest.raises(ValidationError, match="must be in the future"):
         AssignmentCreate(
             tenant_id="tenant-1",
             principal_id="user-1",
-            reason="Valid platform administration reason",
+            local_role=EvalHubRole.EDITOR,
+            reason="Needed for evaluation work",
             expires_at=datetime.now(UTC) - timedelta(seconds=1),
         )
 
 
-def test_request_payload_constraints_are_enforced() -> None:
-    assert (
-        AccessRequestCreate(
-            requested_role="EvalHub.Editor",
-            business_reason="Needed for evaluation work",
-        ).requested_role.value
-        == "EvalHub.Editor"
+def test_request_payload_constraints_and_legacy_roles() -> None:
+    request = AccessRequestCreate(
+        requested_role="EvalHub.Editor",
+        business_reason="Needed for evaluation work",
     )
+    assert request.requested_role is EvalHubRole.EDITOR
     assert (
-        AccessRequestDecision(action="approve", note="Approved for project work").action.value
+        AccessRequestDecision(
+            action="approve",
+            note="Approved for project work",
+        ).action.value
         == "approve"
     )
+
     with pytest.raises(ValidationError):
         AccessRequestCreate(
-            requested_role="EvalHub.Editor",
+            requested_role="editor",
             business_reason="short",
         )
-    with pytest.raises(ValidationError):
-        AccessRequestDecision(action="approve", note="no")

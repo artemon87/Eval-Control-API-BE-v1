@@ -42,11 +42,11 @@ def _request_id(request: Request) -> str | None:
 def _translate_error(exc: Exception) -> HTTPException:
     if isinstance(exc, AuthorizationDeniedError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
-    if isinstance(exc, (PrincipalNotFoundError, AssignmentNotFoundError)):
+    if isinstance(exc, PrincipalNotFoundError | AssignmentNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     if isinstance(exc, AssignmentAlreadyExistsError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    if isinstance(exc, (AccessRequestConflictError, AccessRequestAlreadySatisfiedError)):
+    if isinstance(exc, AccessRequestConflictError | AccessRequestAlreadySatisfiedError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, AccessRequestNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))

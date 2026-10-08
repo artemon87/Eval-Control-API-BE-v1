@@ -20,12 +20,14 @@ from src.repositories.authorization import (
     AssignmentAlreadyExistsError,
     AssignmentNotFoundError,
 )
-from src.security.permissions import Permission
-from src.security.require_permission import require_permission
+from src.security.permissions import EvalHubRole, Permission, ResourceType
+from src.security.require_permission import (
+    require_permission,
+    require_resource_permission,
+)
 from src.services.authorization import (
     AccessRequestAlreadySatisfiedError,
     AuthorizationDeniedError,
-    InvalidAssignmentError,
     PrincipalNotFoundError,
 )
 
@@ -37,7 +39,6 @@ def current_user() -> Any:
         object_id="admin-1",
         display_name="Admin",
         email="admin@example.com",
-        entra_roles=["EvalHub.Admin"],
         role=SimpleNamespace(value="admin"),
     )
 
@@ -69,7 +70,6 @@ def test_request_id_is_optional_and_truncated() -> None:
         (AccessRequestConflictError("duplicate"), 409),
         (AccessRequestAlreadySatisfiedError("satisfied"), 409),
         (AccessRequestNotFoundError("missing"), 404),
-        (InvalidAssignmentError("invalid"), 422),
     ],
 )
 def test_admin_error_translation(error: Exception, status_code: int) -> None:
@@ -100,6 +100,7 @@ async def test_admin_routes_forward_identity_pagination_and_request_id() -> None
     assignment = AssignmentCreate(
         tenant_id="tenant-1",
         principal_id="target-1",
+        local_role=EvalHubRole.ADMIN,
         reason="Needed for administration",
     )
     revoke = AssignmentRevoke(reason="No longer required")
@@ -157,6 +158,7 @@ AdminRouteCall = Callable[[Any], Awaitable[Any]]
             AssignmentCreate(
                 tenant_id="tenant-1",
                 principal_id="target-1",
+                local_role=EvalHubRole.ADMIN,
                 reason="Needed for administration",
             ),
             request(),
@@ -290,3 +292,27 @@ async def test_require_permission_dependency_returns_user_or_raises_403() -> Non
         await dependency(user, fake)
     assert translated.value.status_code == 403
     assert translated.value.detail == "missing permission"
+
+
+@pytest.mark.asyncio
+async def test_resource_permission_dependency_forwards_resource_context() -> None:
+    dependency = require_resource_permission(
+        Permission.EVAL_EDIT,
+        ResourceType.EVALUATION,
+        attributes={"eval_type": "e2e"},
+    )
+    user = current_user()
+    fake = service(require_resource_permission=AsyncMock())
+
+    assert await dependency(user, fake) is user
+    resource = fake.require_resource_permission.await_args.args[2]
+    assert resource.resource is ResourceType.EVALUATION
+    assert resource.attributes == {"eval_type": "e2e"}
+
+    fake.require_resource_permission.side_effect = AuthorizationDeniedError(
+        "missing scoped permission"
+    )
+    with pytest.raises(HTTPException) as translated:
+        await dependency(user, fake)
+    assert translated.value.status_code == 403
+    assert translated.value.detail == "missing scoped permission"
