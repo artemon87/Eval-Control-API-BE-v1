@@ -9,6 +9,13 @@ class Permission(StrEnum):
     AUDIT_READ = "audit.read"
 
 
+class ResourceType(StrEnum):
+    EVALUATION = "evaluation"
+    SUGGESTION = "suggestion"
+    ACCESS = "access"
+    AUDIT = "audit"
+
+
 class EvalHubRole(StrEnum):
     EDITOR = "editor"
     ADMIN = "admin"
@@ -22,6 +29,15 @@ ROLE_PERMISSIONS: dict[EvalHubRole, frozenset[Permission]] = {
         }
     ),
     EvalHubRole.ADMIN: frozenset(Permission),
+}
+
+
+PERMISSION_RESOURCES: dict[Permission, ResourceType] = {
+    Permission.EVAL_ANNOTATE: ResourceType.EVALUATION,
+    Permission.EVAL_EDIT: ResourceType.EVALUATION,
+    Permission.SUGGESTION_MODERATE: ResourceType.SUGGESTION,
+    Permission.ACCESS_MANAGE: ResourceType.ACCESS,
+    Permission.AUDIT_READ: ResourceType.AUDIT,
 }
 
 
@@ -39,3 +55,7 @@ def effective_permissions(
     for role in roles:
         permissions.update(ROLE_PERMISSIONS[role])
     return frozenset(permissions)
+
+
+def role_has_permission(role: EvalHubRole, permission: Permission) -> bool:
+    return permission in ROLE_PERMISSIONS[role]

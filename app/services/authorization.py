@@ -16,6 +16,8 @@ from src.models.authorization import (
     PaginatedAccessUsers,
     PaginatedAssignments,
     PaginatedAuditEvents,
+    ResourceContext,
+    ScopeType,
 )
 from src.repositories.authorization import (
     AccessRequestNotFoundError,
@@ -24,9 +26,11 @@ from src.repositories.authorization import (
 from src.security.authorization_identity import AuthorizationIdentity
 from src.security.permissions import (
     EvalHubRole,
+    PERMISSION_RESOURCES,
     Permission,
     effective_permissions,
     parse_evalhub_role,
+    role_has_permission,
 )
 
 
@@ -52,6 +56,21 @@ class AuthorizationService:
         *,
         record_login: bool = True,
     ) -> AuthorizationContext:
+        context, _ = await self._resolve_with_assignments(
+            identity,
+            record_login=record_login,
+        )
+        return context
+
+    async def _resolve_with_assignments(
+        self,
+        identity: AuthorizationIdentity,
+        *,
+        record_login: bool,
+    ) -> tuple[
+        AuthorizationContext,
+        list[tuple[EvalHubRole, AuthorizationScope]],
+    ]:
         if record_login:
             await self._repository.upsert_principal(identity)
 
@@ -62,15 +81,18 @@ class AuthorizationService:
             limit=100,
         )
         roles: set[EvalHubRole] = set()
+        parsed_assignments: list[tuple[EvalHubRole, AuthorizationScope]] = []
 
         for document in assignments:
             try:
                 role = parse_evalhub_role(document["local_role"])
+                scope = AuthorizationScope.model_validate(document.get("scope", {}))
             except (TypeError, ValueError):
                 continue
             roles.add(role)
+            parsed_assignments.append((role, scope))
 
-        return AuthorizationContext(
+        context = AuthorizationContext(
             tenant_id=identity.tenant_id,
             principal_id=identity.principal_id,
             roles=sorted(roles, key=str),
@@ -79,16 +101,51 @@ class AuthorizationService:
                 key=str,
             ),
         )
+        return context, parsed_assignments
 
     async def require_permission(
         self,
         identity: AuthorizationIdentity,
         permission: Permission,
     ) -> AuthorizationContext:
-        context = await self.resolve(identity)
-        if permission not in context.permissions:
-            raise AuthorizationDeniedError(f"missing permission: {permission}")
-        return context
+        context, assignments = await self._resolve_with_assignments(
+            identity,
+            record_login=True,
+        )
+        if any(
+            scope.type == ScopeType.GLOBAL and role_has_permission(role, permission)
+            for role, scope in assignments
+        ):
+            return context
+        raise AuthorizationDeniedError(f"missing global permission: {permission}")
+
+    async def require_resource_permission(
+        self,
+        identity: AuthorizationIdentity,
+        permission: Permission,
+        resource: ResourceContext,
+    ) -> AuthorizationContext:
+        expected_resource = PERMISSION_RESOURCES[permission]
+        if expected_resource != resource.resource:
+            raise ValueError(
+                f"permission {permission} applies to {expected_resource}, "
+                f"not {resource.resource}"
+            )
+
+        context, assignments = await self._resolve_with_assignments(
+            identity,
+            record_login=True,
+        )
+        if any(
+            role_has_permission(role, permission) and scope.allows(resource)
+            for role, scope in assignments
+        ):
+            return context
+
+        raise AuthorizationDeniedError(
+            f"missing permission {permission} for {resource.resource} "
+            f"with attributes {resource.attributes}"
+        )
 
     async def list_users(
         self,

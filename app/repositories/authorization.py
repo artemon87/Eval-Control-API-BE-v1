@@ -142,13 +142,13 @@ class AuthorizationRepository:
         session: Any | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(UTC)
+        scope_key = assignment.scope.canonical_key()
         await self._assignments.update_many(
             {
                 "tenant_id": assignment.tenant_id,
                 "principal_id": assignment.principal_id,
                 "local_role": assignment.local_role,
-                "scope.type": assignment.scope.type,
-                "scope.id": assignment.scope.id,
+                "scope_key": scope_key,
                 "status": AssignmentStatus.ACTIVE,
                 "expires_at": {"$lte": now},
             },
@@ -157,6 +157,7 @@ class AuthorizationRepository:
         )
         document = {
             **assignment.model_dump(mode="python"),
+            "scope_key": scope_key,
             "status": AssignmentStatus.ACTIVE,
             "granted_by": actor.model_dump(mode="python"),
             "created_at": now,

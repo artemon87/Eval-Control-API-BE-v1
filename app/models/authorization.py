@@ -1,9 +1,16 @@
+import hashlib
+import json
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from src.security.permissions import EvalHubRole, Permission, parse_evalhub_role
+from src.security.permissions import (
+    EvalHubRole,
+    Permission,
+    ResourceType,
+    parse_evalhub_role,
+)
 
 
 class PrincipalType(StrEnum):
@@ -18,6 +25,7 @@ class AssignmentStatus(StrEnum):
 
 class ScopeType(StrEnum):
     GLOBAL = "global"
+    RESOURCE = "resource"
 
 
 class AccessRequestStatus(StrEnum):
@@ -37,14 +45,107 @@ class AuthorizationScope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: ScopeType = ScopeType.GLOBAL
-    id: str = "*"
+    resource: ResourceType | None = None
+    constraints: dict[str, list[str]] = Field(default_factory=dict)
 
-    @field_validator("id")
+    @model_validator(mode="before")
     @classmethod
-    def validate_id(cls, value: str) -> str:
-        if value != "*":
-            raise ValueError("EvalHub role assignments are currently global")
+    def normalize_legacy_global_scope(cls, value: object) -> object:
+        if isinstance(value, dict) and value.get("type", "global") == "global":
+            normalized = dict(value)
+            normalized.pop("id", None)
+            normalized["resource"] = None
+            normalized["constraints"] = {}
+            return normalized
         return value
+
+    @field_validator("constraints")
+    @classmethod
+    def validate_constraints(
+        cls,
+        constraints: dict[str, list[str]],
+    ) -> dict[str, list[str]]:
+        normalized: dict[str, list[str]] = {}
+        for raw_name, raw_values in constraints.items():
+            name = raw_name.strip().lower()
+            if not name or len(name) > 64:
+                raise ValueError("scope constraint names must contain 1-64 characters")
+            if not raw_values:
+                raise ValueError(f"scope constraint {name!r} must contain a value")
+
+            values: list[str] = []
+            for raw_value in raw_values:
+                value = raw_value.strip().lower()
+                if not value or len(value) > 128:
+                    raise ValueError(
+                        f"scope constraint {name!r} values must contain 1-128 characters"
+                    )
+                if value not in values:
+                    values.append(value)
+            normalized[name] = values
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "AuthorizationScope":
+        if self.type is ScopeType.GLOBAL:
+            if self.resource is not None or self.constraints:
+                raise ValueError("global scopes cannot contain a resource or constraints")
+            return self
+
+        if self.resource is None:
+            raise ValueError("resource scopes require a resource")
+        return self
+
+    def allows(self, context: "ResourceContext") -> bool:
+        if self.type is ScopeType.GLOBAL:
+            return True
+        if self.resource != context.resource:
+            return False
+
+        # Every stored constraint must be present on the resource and match.
+        # Consequently, a future or misspelled constraint denies access rather
+        # than being silently ignored.
+        for name, allowed_values in self.constraints.items():
+            actual_value = context.attributes.get(name)
+            if actual_value is None or actual_value.lower() not in allowed_values:
+                return False
+        return True
+
+    def canonical_key(self) -> str:
+        if self.type is ScopeType.GLOBAL:
+            return "global"
+        payload = json.dumps(
+            {
+                "resource": self.resource,
+                "constraints": {
+                    name: sorted(values)
+                    for name, values in sorted(self.constraints.items())
+                },
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return f"resource:{digest}"
+
+
+class ResourceContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource: ResourceType
+    attributes: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("attributes")
+    @classmethod
+    def normalize_attributes(cls, attributes: dict[str, str]) -> dict[str, str]:
+        normalized: dict[str, str] = {}
+        for raw_name, raw_value in attributes.items():
+            name = raw_name.strip().lower()
+            value = raw_value.strip().lower()
+            if not name or not value:
+                raise ValueError("resource attribute names and values cannot be empty")
+            normalized[name] = value
+        return normalized
 
 
 class ActorReference(BaseModel):
@@ -110,6 +211,18 @@ class AssignmentCreate(BaseModel):
         if normalized <= datetime.now(UTC):
             raise ValueError("expires_at must be in the future")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_role_scope(self) -> "AssignmentCreate":
+        if self.local_role == EvalHubRole.ADMIN and self.scope.type != ScopeType.GLOBAL:
+            raise ValueError("admin assignments must use the global scope")
+        if (
+            self.local_role == EvalHubRole.EDITOR
+            and self.scope.type == ScopeType.RESOURCE
+            and self.scope.resource != ResourceType.EVALUATION
+        ):
+            raise ValueError("editor assignments can only scope the evaluation resource")
+        return self
 
 
 class AssignmentRevoke(BaseModel):
