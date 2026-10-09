@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     unit_cases_collection: str = "unit_eval_cases"
     e2e_runs_collection: str = "e2e_eval_runs"
     e2e_cases_collection: str = "e2e_eval_cases"
+    
+    gcs_suggestion_bucket: str = Field(min_length=3)
+    gcs_suggestion_prefix: str = "suggestions"
+    suggestion_image_max_files: int = Field(default=3, ge=1, le=10)
+    suggestion_image_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1)
 
     @field_validator("cors_origins", mode="before")
     @classmethod

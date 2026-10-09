@@ -46,20 +46,6 @@ class SuggestionImageSettings:
     max_files: int = 3
     max_bytes: int = 10 * 1024 * 1024
 
-    @classmethod
-    def from_environment(cls) -> SuggestionImageSettings:
-        bucket_name = os.getenv("GCS_SUGGESTION_BUCKET", "").strip()
-        if not bucket_name:
-            raise RuntimeError("GCS_SUGGESTION_BUCKET is required")
-
-        return cls(
-            bucket_name=bucket_name,
-            object_prefix=os.getenv("GCS_SUGGESTION_PREFIX", "suggestions").strip("/"),
-            max_files=int(os.getenv("SUGGESTION_IMAGE_MAX_FILES", "3")),
-            max_bytes=int(os.getenv("SUGGESTION_IMAGE_MAX_BYTES", str(10 * 1024 * 1024))),
-        )
-
-
 class SuggestionImageStore:
     def __init__(
         self,

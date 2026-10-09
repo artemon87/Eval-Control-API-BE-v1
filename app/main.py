@@ -9,13 +9,26 @@ from app.api.routes import e2e, health, unit
 from app.config import Settings, get_settings
 from app.database import database_lifespan
 from app.middleware import AuthenticationPlaceholderMiddleware, RequestContextMiddleware
+from src.services.suggestion_images import (
+    SuggestionImageSettings,
+    SuggestionImageStore,
+)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or get_settings()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+        app.state.suggestion_image_store = SuggestionImageStore(
+            SuggestionImageSettings(
+                bucket_name=active_settings.gcs_suggestion_bucket,
+                object_prefix=active_settings.gcs_suggestion_prefix.strip("/"),
+                max_files=active_settings.suggestion_image_max_files,
+                max_bytes=active_settings.suggestion_image_max_bytes,
+            )
+        )
+
         async with database_lifespan(app, active_settings):
             yield
 
