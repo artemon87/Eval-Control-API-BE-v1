@@ -12,6 +12,11 @@ dependencies = [
   "pydantic-settings>=2.10,<3.0",
   "pymongo>=4.11,<5.0",
   "uvicorn[standard]>=0.35,<1.0",
+
+  "google-cloud-storage>=3,<4",
+  "Pillow>=12,<13",
+  "pillow-heif>=1.4,<2",
+  "python-multipart>=0.0.20,<1",
 ]
 
 [project.optional-dependencies]
@@ -41,4 +46,6 @@ select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+
+#pip install google-cloud-storage Pillow pillow-heif python-multipart
 
