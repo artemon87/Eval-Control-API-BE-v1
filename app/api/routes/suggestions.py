@@ -50,6 +50,7 @@ async def list_suggestions(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_suggestion(
+    user: AuthenticatedUser,
     viewer: Viewer,
     repository: SuggestionRepositoryDependency,
     image_store: SuggestionImageStoreDependency,
@@ -62,11 +63,17 @@ async def create_suggestion(
         files=images or [],
     )
 
+    author_name = (
+        user.display_name
+        or user.email
+        or viewer.removeprefix("user:")
+    )
+
     try:
         document = await repository.create(
             title=title,
             description=description,
-            author=viewer,
+            author=author_name,
             attachments=attachments,
         )
     except Exception:
