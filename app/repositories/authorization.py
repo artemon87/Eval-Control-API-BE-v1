@@ -19,6 +19,7 @@ from src.models.authorization import (
     AssignmentStatus,
     PrincipalRecord,
 )
+from src.models.suggestions import SuggestionStatus
 from src.security.authorization_identity import AuthorizationIdentity
 
 
@@ -545,3 +546,49 @@ class AuthorizationRepository:
                     request_id=request_id,
                     session=session,
                 )
+                
+async def update_status(
+    self,
+    *,
+    suggestion_id: str,
+    status: SuggestionStatus,
+    viewer: str,
+) -> dict[str, Any]:
+    object_id = self._object_id(suggestion_id)
+    changed_at = dt.datetime.now(dt.UTC)
+
+    document = await self.suggestions.collection.find_one_and_update(
+        {"_id": object_id},
+        {
+            "$set": {
+                "status": status,
+                "status_updated_at": changed_at,
+                "status_updated_by": viewer,
+                "updated_at": changed_at,
+            },
+            "$push": {
+                "status_history": {
+                    "status": status,
+                    "changed_at": changed_at,
+                    "changed_by": viewer,
+                }
+            },
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+
+    if document is None:
+        raise LookupError(SUGGESTION_NOT_FOUND)
+
+    existing_vote = await self.votes.collection.find_one(
+        {
+            "suggestion_id": object_id,
+            "user_id": viewer,
+        },
+        {"_id": 1},
+    )
+
+    return self._serialize(
+        document,
+        viewer_has_voted=existing_vote is not None,
+    )

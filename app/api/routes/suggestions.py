@@ -7,10 +7,24 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from starlette.responses import StreamingResponse
 
-from src.api.dependencies import SuggestionImageStoreDependency, SuggestionRepositoryDependency
+from src.api.dependencies import (
+    AuthorizationServiceDependency,
+    CurrentUserDependency,
+    SuggestionImageStoreDependency,
+    SuggestionRepositoryDependency,
+)
 from src.models.auth import CurrentUser
-from src.models.suggestions import SuggestionListResponse, SuggestionResponse
+from src.models.suggestions import (
+    SuggestionListResponse,
+    SuggestionResponse,
+    SuggestionStatusUpdate,
+)
 from src.security.auth import get_authenticated_user
+
+from src.models.authorization import Permission
+from src.security.authorization_identity import (
+    identity_from_authenticated_user,
+)
 
 
 router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
@@ -112,6 +126,44 @@ async def get_suggestion_attachment(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+@router.patch(
+    "/{suggestion_id}/status",
+    response_model=SuggestionResponse,
+)
+async def update_suggestion_status(
+    suggestion_id: str,
+    payload: SuggestionStatusUpdate,
+    current_user: CurrentUserDependency,
+    viewer: Viewer,
+    repository: SuggestionRepositoryDependency,
+    authorization_service: AuthorizationServiceDependency,
+) -> SuggestionResponse:
+    identity = identity_from_authenticated_user(current_user)
+    authorization = await authorization_service.resolve(identity)
+
+    if (
+        Permission.SUGGESTION_MANAGE
+        not in authorization.permissions
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to manage suggestions",
+        )
+
+    try:
+        document = await repository.update_status(
+            suggestion_id=suggestion_id,
+            status=payload.status,
+            viewer=viewer,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return SuggestionResponse.model_validate(document)
 
 
 @router.put("/{suggestion_id}/vote", status_code=status.HTTP_204_NO_CONTENT)
