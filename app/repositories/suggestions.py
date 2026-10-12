@@ -90,6 +90,80 @@ class SuggestionRepository:
         if not document or not document.get("attachments"):
             raise LookupError(SUGGESTION_NOT_FOUND)
         return document["attachments"][0]
+    
+    
+    async def update_status(
+        self,
+        *,
+        suggestion_id: str,
+        status: SuggestionStatus,
+        viewer: str,
+        updated_by_name: str,
+    ) -> dict[str, Any]:
+        object_id = self._object_id(suggestion_id)
+
+        current_document = await self.suggestions.collection.find_one(
+            {"_id": object_id},
+        )
+        if current_document is None:
+            raise LookupError(SUGGESTION_NOT_FOUND)
+
+        previous_status = str(
+            current_document.get("status", "open"),
+        )
+
+        existing_vote = await self.votes.collection.find_one(
+            {
+                "suggestion_id": object_id,
+                "user_id": viewer,
+            },
+            {"_id": 1},
+        )
+
+        # Do not create an audit-history entry when nothing changed.
+        if previous_status == status:
+            return self._serialize(
+                current_document,
+                viewer_has_voted=existing_vote is not None,
+            )
+
+        changed_at = dt.datetime.now(dt.UTC)
+
+        document = await self.suggestions.collection.find_one_and_update(
+            {
+                "_id": object_id,
+                "status": previous_status,
+            },
+            {
+                "$set": {
+                    "status": status,
+                    "status_updated_at": changed_at,
+                    "status_updated_by_id": viewer,
+                    "status_updated_by_name": updated_by_name,
+                    "updated_at": changed_at,
+                },
+                "$push": {
+                    "status_history": {
+                        "from_status": previous_status,
+                        "to_status": status,
+                        "changed_at": changed_at,
+                        "changed_by_id": viewer,
+                        "changed_by_name": updated_by_name,
+                    },
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+        if document is None:
+            raise RuntimeError(
+                "Suggestion status was changed by another request"
+            )
+
+        return self._serialize(
+            document,
+            viewer_has_voted=existing_vote is not None,
+        )
 
     async def add_vote(self, *, suggestion_id: str, user_id: str) -> bool:
         object_id = self._object_id(suggestion_id)
