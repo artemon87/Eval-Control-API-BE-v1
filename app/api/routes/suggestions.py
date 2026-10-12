@@ -150,12 +150,21 @@ async def update_suggestion_status(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to manage suggestions",
         )
+        
+    updated_by_name = (
+        getattr(current_user, "name", None)
+        or getattr(current_user, "display_name", None)
+        or getattr(current_user, "email", None)
+        or viewer
+    )
+    
 
     try:
         document = await repository.update_status(
             suggestion_id=suggestion_id,
             status=payload.status,
             viewer=viewer,
+            updated_by_name=str(updated_by_name),
         )
     except LookupError as exc:
         raise HTTPException(

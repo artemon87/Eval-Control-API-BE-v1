@@ -553,8 +553,32 @@ async def update_status(
     suggestion_id: str,
     status: SuggestionStatus,
     viewer: str,
+    updated_by_name: str,
 ) -> dict[str, Any]:
     object_id = self._object_id(suggestion_id)
+
+    current_document = await self.suggestions.collection.find_one(
+        {"_id": object_id},
+    )
+    if current_document is None:
+        raise LookupError(SUGGESTION_NOT_FOUND)
+
+    previous_status = str(current_document.get("status", "open"))
+
+    # Selecting the existing status should not create a fake audit event.
+    if previous_status == status:
+        existing_vote = await self.votes.collection.find_one(
+            {
+                "suggestion_id": object_id,
+                "user_id": viewer,
+            },
+            {"_id": 1},
+        )
+        return self._serialize(
+            current_document,
+            viewer_has_voted=existing_vote is not None,
+        )
+
     changed_at = dt.datetime.now(dt.UTC)
 
     document = await self.suggestions.collection.find_one_and_update(
@@ -563,15 +587,18 @@ async def update_status(
             "$set": {
                 "status": status,
                 "status_updated_at": changed_at,
-                "status_updated_by": viewer,
+                "status_updated_by_id": viewer,
+                "status_updated_by_name": updated_by_name,
                 "updated_at": changed_at,
             },
             "$push": {
                 "status_history": {
-                    "status": status,
+                    "from_status": previous_status,
+                    "to_status": status,
                     "changed_at": changed_at,
-                    "changed_by": viewer,
-                }
+                    "changed_by_id": viewer,
+                    "changed_by_name": updated_by_name,
+                },
             },
         },
         return_document=ReturnDocument.AFTER,
