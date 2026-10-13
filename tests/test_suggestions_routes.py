@@ -6,11 +6,12 @@ helper if it is no longer exported by src.api.api_v1.routes.suggestions.
 
 import datetime as dt
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
+from io import BytesIO
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from starlette.responses import StreamingResponse
 
 from src.api.api_v1.routes.suggestions import (
@@ -37,7 +38,7 @@ def document(**changes: Any) -> dict[str, Any]:
     return payload
 
 
-def user(**changes: Any) -> SimpleNamespace:
+def user(**changes: Any) -> Any:
     fields = {
         "authenticated": True, "tenant_id": "tenant-123", "object_id": "123", "subject": "subject-123", "email": "alex@example.com",
         "display_name": "Alex Smith", "name": None,
@@ -46,7 +47,7 @@ def user(**changes: Any) -> SimpleNamespace:
     return SimpleNamespace(**fields)
 
 
-def image_store() -> SimpleNamespace:
+def image_store() -> Any:
     return SimpleNamespace(
         upload_many=AsyncMock(return_value=[]),
         delete_many=AsyncMock(),
@@ -54,7 +55,7 @@ def image_store() -> SimpleNamespace:
     )
 
 
-def repository(**changes: Any) -> SimpleNamespace:
+def repository(**changes: Any) -> Any:
     fields = {
         "create": AsyncMock(return_value=document()),
         "get_attachment": AsyncMock(return_value={
@@ -103,7 +104,7 @@ async def test_create_passes_uploaded_attachment_metadata_to_repository() -> Non
     repo = repository()
     store = image_store()
     store.upload_many.return_value = attachments
-    image = object()  # upload_many is mocked; no actual UploadFile needed.
+    image = UploadFile(filename="image.png", file=BytesIO(b"image bytes"))
     await create_suggestion(
         user=user(), viewer="user:123", repository=repo,
         image_store=store, title="Add dark mode",
@@ -142,7 +143,11 @@ async def test_get_attachment_returns_private_stream_with_safe_headers() -> None
     repo.get_attachment.assert_awaited_once_with(
         suggestion_id="abc123", attachment_id="att1",
     )
-    assert b"".join([chunk async for chunk in result.body_iterator]) == b"helloworld"
+    chunks = [
+        chunk.encode("utf-8") if isinstance(chunk, str) else bytes(chunk)
+        async for chunk in result.body_iterator
+    ]
+    assert b"".join(chunks) == b"helloworld"
 
 
 async def test_get_attachment_missing_returns_404() -> None:
@@ -155,7 +160,7 @@ async def test_get_attachment_missing_returns_404() -> None:
     assert error.value.status_code == 404
 
 
-def authorization_service(permissions: set[Permission]) -> SimpleNamespace:
+def authorization_service(permissions: set[Permission]) -> Any:
     return SimpleNamespace(resolve=AsyncMock(return_value=SimpleNamespace(permissions=permissions)))
 
 
@@ -229,7 +234,7 @@ class _ListRepository:
 
 async def test_list_suggestions_returns_items_from_repository() -> None:
     repo = _ListRepository([document()])
-    result = await list_suggestions("user:1", repo, limit=100)
+    result = await list_suggestions("user:1", cast(Any, repo), limit=100)
     assert isinstance(result, SuggestionListResponse)
     assert len(result.items) == 1
     assert result.items[0].id == "abc123"
@@ -237,26 +242,26 @@ async def test_list_suggestions_returns_items_from_repository() -> None:
 
 async def test_list_suggestions_returns_empty_list_when_no_suggestions() -> None:
     repo = _ListRepository([])
-    result = await list_suggestions("user:1", repo, limit=100)
+    result = await list_suggestions("user:1", cast(Any, repo), limit=100)
     assert result.items == []
 
 
 async def test_list_suggestions_passes_viewer_and_limit_to_repository() -> None:
     repo = _ListRepository([])
-    await list_suggestions("user:1", repo, limit=25)
+    await list_suggestions("user:1", cast(Any, repo), limit=25)
     assert repo.captured_kwargs == {"viewer": "user:1", "limit": 25}
 
 
 async def test_list_suggestions_preserves_vote_information() -> None:
     repo = _ListRepository([document(vote_count=4, viewer_has_voted=True)])
-    result = await list_suggestions("user:1", repo, limit=100)
+    result = await list_suggestions("user:1", cast(Any, repo), limit=100)
     assert result.items[0].vote_count == 4
     assert result.items[0].viewer_has_voted is True
 
 
 async def test_list_suggestions_preserves_repository_order() -> None:
     repo = _ListRepository([document(id="first"), document(id="second")])
-    result = await list_suggestions("user:1", repo, limit=100)
+    result = await list_suggestions("user:1", cast(Any, repo), limit=100)
     assert [suggestion.id for suggestion in result.items] == ["first", "second"]
 
 
@@ -270,28 +275,28 @@ class _VoteRepository:
 
 async def test_add_vote_passes_suggestion_id_and_viewer() -> None:
     repo = _VoteRepository()
-    await add_vote("suggestion-1", "user:1", repo)
+    await add_vote("suggestion-1", "user:1", cast(Any, repo))
     repo.add_vote.assert_awaited_once_with(suggestion_id="suggestion-1", user_id="user:1")
 
 
 async def test_add_vote_returns_404_when_suggestion_missing() -> None:
     repo = _VoteRepository(raise_lookup_error=True)
     with pytest.raises(HTTPException) as exc_info:
-        await add_vote("missing", "user:1", repo)
+        await add_vote("missing", "user:1", cast(Any, repo))
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Suggestion not found"
 
 
 async def test_remove_vote_passes_suggestion_id_and_viewer() -> None:
     repo = _VoteRepository()
-    await remove_vote("suggestion-1", "user:1", repo)
+    await remove_vote("suggestion-1", "user:1", cast(Any, repo))
     repo.remove_vote.assert_awaited_once_with(suggestion_id="suggestion-1", user_id="user:1")
 
 
 async def test_remove_vote_returns_404_when_suggestion_missing() -> None:
     repo = _VoteRepository(raise_lookup_error=True)
     with pytest.raises(HTTPException) as exc_info:
-        await remove_vote("missing", "user:1", repo)
+        await remove_vote("missing", "user:1", cast(Any, repo))
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Suggestion not found"
 
