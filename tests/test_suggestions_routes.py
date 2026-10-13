@@ -39,7 +39,7 @@ def document(**changes: Any) -> dict[str, Any]:
 
 def user(**changes: Any) -> SimpleNamespace:
     fields = {
-        "authenticated": True, "object_id": "123", "subject": "subject-123", "email": "alex@example.com",
+        "authenticated": True, "tenant_id": "tenant-123", "object_id": "123", "subject": "subject-123", "email": "alex@example.com",
         "display_name": "Alex Smith", "name": None,
     }
     fields.update(changes)
@@ -142,7 +142,7 @@ async def test_get_attachment_returns_private_stream_with_safe_headers() -> None
     repo.get_attachment.assert_awaited_once_with(
         suggestion_id="abc123", attachment_id="att1",
     )
-    assert b"".join(result.body_iterator) == b"helloworld"
+    assert b"".join([chunk async for chunk in result.body_iterator]) == b"helloworld"
 
 
 async def test_get_attachment_missing_returns_404() -> None:
