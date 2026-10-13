@@ -39,7 +39,7 @@ def document(**changes: Any) -> dict[str, Any]:
 
 def user(**changes: Any) -> SimpleNamespace:
     fields = {
-        "object_id": "123", "subject": "subject-123", "email": "alex@example.com",
+        "authenticated": True, "object_id": "123", "subject": "subject-123", "email": "alex@example.com",
         "display_name": "Alex Smith", "name": None,
     }
     fields.update(changes)
@@ -131,7 +131,7 @@ async def test_get_attachment_returns_private_stream_with_safe_headers() -> None
     repo = repository()
     store = image_store()
     result = await get_suggestion_attachment(
-        suggestion_id="abc123", attachment_id="att1", viewer="user:123",
+        suggestion_id="abc123", attachment_id="att1", _viewer="user:123",
         repository=repo, image_store=store,
     )
     assert isinstance(result, StreamingResponse)
@@ -149,7 +149,7 @@ async def test_get_attachment_missing_returns_404() -> None:
     repo = repository(get_attachment=AsyncMock(side_effect=LookupError("not found")))
     with pytest.raises(HTTPException) as error:
         await get_suggestion_attachment(
-            suggestion_id="abc123", attachment_id="missing", viewer="user:123",
+            suggestion_id="abc123", attachment_id="missing", _viewer="user:123",
             repository=repo, image_store=image_store(),
         )
     assert error.value.status_code == 404

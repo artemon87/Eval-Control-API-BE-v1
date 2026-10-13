@@ -321,7 +321,7 @@ async def test_get_attachment_missing_raises_lookup_error() -> None:
 
 # --- status transitions ---
 def _different_status() -> SuggestionStatus:
-    return next(status for status in SuggestionStatus if status.value != "open")
+    return "planned"
 
 
 async def test_update_status_writes_audit_and_history() -> None:
@@ -350,7 +350,7 @@ async def test_same_status_does_not_change_audit_or_history() -> None:
     original = _suggestion_doc()
     repo, suggestions, votes = _new_repo(find_one_result=original)
     votes.find_one_result = {"_id": ObjectId()}
-    result = await repo.update_status(suggestion_id=str(original["_id"]), status=SuggestionStatus("open"), viewer="user:123", updated_by_name="Alex")
+    result = await repo.update_status(suggestion_id=str(original["_id"]), status="open", viewer="user:123", updated_by_name="Alex")
     assert suggestions.find_one_and_update_calls == []
     assert result["viewer_has_voted"] is True
     assert result["status_updated_at"] is None
