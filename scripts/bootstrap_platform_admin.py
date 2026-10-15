@@ -16,7 +16,7 @@ def required_env(name: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Create the initial EvalHub platform administrator assignment."
+        description="Create the initial EvalHub administrator assignment."
     )
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--principal-id", required=True)
@@ -50,10 +50,10 @@ async def bootstrap(args: argparse.Namespace) -> None:
                     "principal_type": "user",
                     "display_name": args.display_name,
                     "email": args.email,
-                    "entra_roles_last_seen": ["EvalHub.Admin"],
                     "last_login_at": now,
                     "updated_at": now,
                 },
+                "$unset": {"entra_roles_last_seen": ""},
                 "$setOnInsert": {"first_login_at": now},
             },
             upsert=True,
@@ -62,7 +62,7 @@ async def bootstrap(args: argparse.Namespace) -> None:
         assignment = {
             "tenant_id": args.tenant_id,
             "principal_id": args.principal_id,
-            "local_role": "platform_admin",
+            "local_role": "admin",
             "scope": {"type": "global", "id": "*"},
             "status": "active",
             "reason": args.reason,
@@ -80,7 +80,7 @@ async def bootstrap(args: argparse.Namespace) -> None:
         try:
             result = await database.authorization_assignments.insert_one(assignment)
         except DuplicateKeyError as exc:
-            raise RuntimeError("An active platform_admin assignment already exists") from exc
+            raise RuntimeError("An active admin assignment already exists") from exc
 
         await database.authorization_audit_events.insert_one(
             {
@@ -92,14 +92,14 @@ async def bootstrap(args: argparse.Namespace) -> None:
                     "display_name": args.display_name,
                 },
                 "assignment_id": str(result.inserted_id),
-                "local_role": "platform_admin",
+                "local_role": "admin",
                 "scope": assignment["scope"],
                 "reason": args.reason,
                 "occurred_at": now,
                 "request_id": None,
             }
         )
-        print(f"Created platform_admin assignment {result.inserted_id}")
+        print(f"Created EvalHub admin assignment {result.inserted_id}")
     finally:
         await client.close()
 
