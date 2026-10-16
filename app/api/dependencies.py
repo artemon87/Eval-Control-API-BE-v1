@@ -3,7 +3,8 @@ from typing import Annotated, cast
 from fastapi import Depends, Request
 
 from app.config import Settings
-from app.repositories import E2ERepository, UnitRepository
+from app.repositories import E2ERepository, ProductUpdateRepository, UnitRepository
+from app.services.suggestion_images import SuggestionImageStore
 
 
 def get_settings_from_app(request: Request) -> Settings:
@@ -18,6 +19,20 @@ def get_e2e_repository(request: Request) -> E2ERepository:
     return E2ERepository(request.app.state.database, request.app.state.settings)
 
 
+def get_product_update_repository(request: Request) -> ProductUpdateRepository:
+    return ProductUpdateRepository(request.app.state.database, request.app.state.settings)
+
+
+def get_product_update_image_store(request: Request) -> SuggestionImageStore:
+    return cast(SuggestionImageStore, request.app.state.product_update_image_store)
+
+
 SettingsDependency = Annotated[Settings, Depends(get_settings_from_app)]
 UnitRepositoryDependency = Annotated[UnitRepository, Depends(get_unit_repository)]
 E2ERepositoryDependency = Annotated[E2ERepository, Depends(get_e2e_repository)]
+ProductUpdateRepositoryDependency = Annotated[
+    ProductUpdateRepository, Depends(get_product_update_repository)
+]
+ProductUpdateImageStoreDependency = Annotated[
+    SuggestionImageStore, Depends(get_product_update_image_store)
+]

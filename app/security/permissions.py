@@ -7,6 +7,7 @@ class Permission(StrEnum):
     SUGGESTION_MODERATE = "suggestions.moderate"
     ACCESS_MANAGE = "access.manage"
     AUDIT_READ = "audit.read"
+    PRODUCT_UPDATE_MANAGE = "product_updates.manage"
 
 
 class ResourceType(StrEnum):
@@ -14,6 +15,7 @@ class ResourceType(StrEnum):
     SUGGESTION = "suggestion"
     ACCESS = "access"
     AUDIT = "audit"
+    PRODUCT_UPDATE = "product_update"
 
 
 class EvalHubRole(StrEnum):
@@ -38,6 +40,7 @@ PERMISSION_RESOURCES: dict[Permission, ResourceType] = {
     Permission.SUGGESTION_MODERATE: ResourceType.SUGGESTION,
     Permission.ACCESS_MANAGE: ResourceType.ACCESS,
     Permission.AUDIT_READ: ResourceType.AUDIT,
+    Permission.PRODUCT_UPDATE_MANAGE: ResourceType.PRODUCT_UPDATE,
 }
 
 
