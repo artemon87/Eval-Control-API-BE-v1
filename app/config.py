@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     suggestion_image_max_files: int = Field(default=3, ge=1, le=10)
     suggestion_image_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1)
 
+    product_updates_collection: str = "product_updates"
+    gcs_product_update_prefix: str = "product-updates"
+    product_update_image_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1)
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_origins(cls, value: object) -> object:
