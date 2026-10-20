@@ -24,12 +24,12 @@ def _highlights(value: str) -> list[str]:
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail="highlights must be a JSON array") from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="highlights must be a JSON array") from exc
     if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
-        raise HTTPException(status_code=422, detail="highlights must be a JSON array of strings")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="highlights must be a JSON array of strings")
     cleaned = [item.strip() for item in parsed if item.strip()]
     if len(cleaned) > 8 or any(len(item) > 160 for item in cleaned):
-        raise HTTPException(status_code=422, detail="Use at most 8 highlights of 160 characters")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Use at most 8 highlights of 160 characters")
     return cleaned
 
 
@@ -45,7 +45,7 @@ async def list_product_updates(
     "",
     status_code=status.HTTP_201_CREATED,
     responses={
-        422: {"description": "Invalid highlights or product update form data"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid highlights or product update form data"},
     },
 )
 async def create_product_update(
@@ -82,8 +82,8 @@ async def create_product_update(
 @router.patch(
     "/{update_id}",
     responses={
-        404: {"description": "Product update not found"},
-        422: {"description": "Invalid highlights or product update form data"},
+        status.HTTP_404_NOT_FOUND: {"description": "Product update not found"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid highlights or product update form data"},
     },
 )
 async def update_product_update(
@@ -107,7 +107,7 @@ async def update_product_update(
             "highlights": _highlights(highlights),
         })
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return ProductUpdateResponse.model_validate(document)
 
 
@@ -115,7 +115,7 @@ async def update_product_update(
     "/{update_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
-        404: {"description": "Product update not found"},
+        status.HTTP_404_NOT_FOUND: {"description": "Product update not found"},
     },
 )
 async def delete_product_update(
@@ -127,7 +127,7 @@ async def delete_product_update(
     try:
         document = await repository.delete(update_id)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     if document.get("image"):
         await image_store.delete_many([document["image"]])
 
@@ -135,7 +135,7 @@ async def delete_product_update(
 @router.get(
     "/{update_id}/image",
     responses={
-        404: {"description": "Product update image not found"},
+        status.HTTP_404_NOT_FOUND: {"description": "Product update image not found"},
     },
 )
 async def get_product_update_image(
@@ -146,7 +146,7 @@ async def get_product_update_image(
     try:
         image = await repository.get_image(update_id)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     filename = str(image["filename"])
     return StreamingResponse(
         image_store.iter_download(str(image["object_name"])),
