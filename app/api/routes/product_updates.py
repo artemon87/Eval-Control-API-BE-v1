@@ -24,12 +24,21 @@ def _highlights(value: str) -> list[str]:
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="highlights must be a JSON array") from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="highlights must be a JSON array",
+        ) from exc
     if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="highlights must be a JSON array of strings")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="highlights must be a JSON array of strings",
+        )
     cleaned = [item.strip() for item in parsed if item.strip()]
     if len(cleaned) > 8 or any(len(item) > 160 for item in cleaned):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Use at most 8 highlights of 160 characters")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Use at most 8 highlights of 160 characters",
+        )
     return cleaned
 
 
