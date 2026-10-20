@@ -32,6 +32,9 @@ class UnitRepository:
         *,
         skill: str | None,
         environment: str | None,
+        target_environment: str | None,
+        category: str | None,
+        agent_name: str | None,
         skill_version: str | None,
         verdict: str | None,
         limit: int,
@@ -42,6 +45,12 @@ class UnitRepository:
             query["skill"] = skill
         if environment:
             query["environment"] = environment
+        if target_environment:
+            query["unit_config.target_environment"] = target_environment
+        if category:
+            query["unit_config.category"] = category
+        if agent_name:
+            query["unit_config.agent_name"] = agent_name
         if skill_version:
             query["unit_config.skill_version"] = skill_version
         if verdict:
@@ -71,6 +80,8 @@ class UnitRepository:
         skill: str,
         case_id: str | None,
         environment: str | None,
+        target_environment: str | None,
+        category: str | None,
         limit: int,
         cursor: str | None,
     ) -> tuple[list[dict[str, Any]], str | None]:
@@ -82,6 +93,10 @@ class UnitRepository:
         }
         if environment:
             run_query["environment"] = environment
+        if target_environment:
+            run_query["unit_config.target_environment"] = target_environment
+        if category:
+            run_query["unit_config.category"] = category
         runs, next_cursor = await self.runs.list_by_time(
             run_query, limit=limit, cursor=cursor
         )
