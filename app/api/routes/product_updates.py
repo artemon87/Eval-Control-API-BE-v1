@@ -41,7 +41,13 @@ async def list_product_updates(
     return ProductUpdateListResponse(items=await repository.list(limit=limit))
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        422: {"description": "Invalid highlights or product update form data"},
+    },
+)
 async def create_product_update(
     _admin: EvalHubAdminDependency,
     repository: ProductUpdateRepositoryDependency,
@@ -73,7 +79,13 @@ async def create_product_update(
         raise
 
 
-@router.patch("/{update_id}")
+@router.patch(
+    "/{update_id}",
+    responses={
+        404: {"description": "Product update not found"},
+        422: {"description": "Invalid highlights or product update form data"},
+    },
+)
 async def update_product_update(
     update_id: str,
     _admin: EvalHubAdminDependency,
@@ -99,7 +111,13 @@ async def update_product_update(
     return ProductUpdateResponse.model_validate(document)
 
 
-@router.delete("/{update_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{update_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        404: {"description": "Product update not found"},
+    },
+)
 async def delete_product_update(
     update_id: str,
     _admin: EvalHubAdminDependency,
@@ -114,7 +132,12 @@ async def delete_product_update(
         await image_store.delete_many([document["image"]])
 
 
-@router.get("/{update_id}/image")
+@router.get(
+    "/{update_id}/image",
+    responses={
+        404: {"description": "Product update image not found"},
+    },
+)
 async def get_product_update_image(
     update_id: str,
     repository: ProductUpdateRepositoryDependency,
