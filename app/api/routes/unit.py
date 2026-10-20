@@ -16,6 +16,9 @@ async def list_unit_runs(
     repository: UnitRepositoryDependency,
     skill: str | None = None,
     environment: str | None = None,
+    target_environment: str | None = None,
+    category: str | None = None,
+    agent_name: str | None = None,
     skill_version: str | None = None,
     verdict: str | None = None,
     limit: Limit = 50,
@@ -25,6 +28,9 @@ async def list_unit_runs(
         items, next_cursor = await repository.list_runs(
             skill=skill,
             environment=environment,
+            target_environment=target_environment,
+            category=category,
+            agent_name=agent_name,
             skill_version=skill_version,
             verdict=verdict,
             limit=limit,
@@ -66,6 +72,8 @@ async def unit_case_trend(
     repository: UnitRepositoryDependency,
     skill: str,
     environment: str | None = None,
+    target_environment: str | None = None,
+    category: str | None = None,
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -75,6 +83,8 @@ async def unit_case_trend(
             skill=skill,
             case_id=case_id,
             environment=environment,
+            target_environment=target_environment,
+            category=category,
             limit=limit,
             cursor=cursor,
         )
@@ -88,6 +98,8 @@ async def unit_skill_trend(
     skill: str,
     repository: UnitRepositoryDependency,
     environment: str | None = None,
+    target_environment: str | None = None,
+    category: str | None = None,
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -97,6 +109,8 @@ async def unit_skill_trend(
             skill=skill,
             case_id=None,
             environment=environment,
+            target_environment=target_environment,
+            category=category,
             limit=limit,
             cursor=cursor,
         )

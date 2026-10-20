@@ -28,6 +28,17 @@ async def main() -> None:
                     [("verdict", ASCENDING), ("started_at", DESCENDING), ("_id", DESCENDING)],
                     name="verdict_history",
                 ),
+                IndexModel(
+                    [
+                        ("eval_type", ASCENDING),
+                        ("unit_config.category", ASCENDING),
+                        ("unit_config.target_environment", ASCENDING),
+                        ("unit_config.agent_name", ASCENDING),
+                        ("started_at", DESCENDING),
+                        ("_id", DESCENDING),
+                    ],
+                    name="unit_configuration_history",
+                ),
             ]
         )
         await database[settings.unit_cases_collection].create_indexes(

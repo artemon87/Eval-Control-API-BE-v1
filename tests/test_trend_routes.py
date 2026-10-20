@@ -66,6 +66,8 @@ async def test_unit_skill_trend_is_scoped_and_cursor_paginated() -> None:
         "skill": "feedback-skill",
         "case_id": None,
         "environment": "staging",
+        "target_environment": None,
+        "category": None,
         "limit": 25,
         "cursor": None,
     }

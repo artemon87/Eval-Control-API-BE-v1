@@ -73,3 +73,30 @@ def test_unit_case_defaults_null_bsa_version_to_unknown() -> None:
     )
 
     assert case.bsa_version == "unknown"
+
+
+def test_unit_run_accepts_optional_scope_metadata() -> None:
+    document = unit_run_document()
+    unit_config = document["unit_config"]
+    assert isinstance(unit_config, dict)
+    unit_config.update(
+        {
+            "category": "domain-skills",
+            "target_environment": "5-prod-sales",
+            "agent_name": "oneview-agent",
+        }
+    )
+
+    run = UnitRun.model_validate(document)
+
+    assert run.unit_config.category == "domain-skills"
+    assert run.unit_config.target_environment == "5-prod-sales"
+    assert run.unit_config.agent_name == "oneview-agent"
+
+
+def test_unit_run_keeps_scope_metadata_optional_for_historical_records() -> None:
+    run = UnitRun.model_validate(unit_run_document())
+
+    assert run.unit_config.category is None
+    assert run.unit_config.target_environment is None
+    assert run.unit_config.agent_name is None

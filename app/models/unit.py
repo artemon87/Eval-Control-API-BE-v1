@@ -12,6 +12,12 @@ class UnitConfig(APIModel):
     bsa_environment: str
     bsa_version: str = "unknown"
     skill_version: str
+    pass_rate_threshold: float | None = None
+    evaluation_layer: str | None = None
+    n_runs: int | None = None
+    category: str | None = None
+    target_environment: str | None = None
+    agent_name: str | None = None
 
     @field_validator("bsa_version", mode="before")
     @classmethod
