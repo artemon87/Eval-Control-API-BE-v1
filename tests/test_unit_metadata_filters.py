@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -57,7 +57,7 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
     repository = RouteRepository()
 
     page = await list_unit_runs(
-        repository,
+        cast(UnitRepository, repository),
         environment="staging",
         target_environment="5-prod-sales",
         category="domain-skills",
