@@ -52,6 +52,26 @@ class RunsCollection:
         return [], None
 
 
+class AggregateCursor:
+    async def to_list(self, *, length: int | None) -> list[dict[str, Any]]:
+        assert length is None
+        return [{"_id": "unit-1", "mean_score": 4.775}]
+
+
+class CaseCollection:
+    def __init__(self) -> None:
+        self.pipeline: list[dict[str, Any]] | None = None
+
+    async def aggregate(self, pipeline: list[dict[str, Any]]) -> AggregateCursor:
+        self.pipeline = pipeline
+        return AggregateCursor()
+
+
+class CasesRepository:
+    def __init__(self) -> None:
+        self.collection = CaseCollection()
+
+
 @pytest.mark.asyncio
 async def test_unit_run_route_forwards_configuration_filters() -> None:
     repository = RouteRepository()
@@ -104,3 +124,58 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
         "unit_config.category": "domain-skills",
         "unit_config.agent_name": "oneview-agent",
     }
+
+
+@pytest.mark.asyncio
+async def test_unit_repository_aggregates_mean_score_from_case_metrics() -> None:
+    repository = UnitRepository.__new__(UnitRepository)
+    cases = CasesRepository()
+    repository.cases = cast(Any, cases)
+    runs = [
+        {
+            "run_id": "unit-1",
+            "summary": {
+                "total": 1,
+                "passed": 1,
+                "failed": 0,
+                "pass_rate_pct": 100,
+            },
+        },
+        {
+            "run_id": "unit-without-scores",
+            "summary": {
+                "total": 1,
+                "passed": 0,
+                "failed": 1,
+                "pass_rate_pct": 0,
+            },
+        },
+    ]
+
+    enriched = await repository._with_mean_scores(runs)
+
+    assert enriched[0]["summary"]["mean_score"] == pytest.approx(4.775)
+    assert enriched[1]["summary"]["mean_score"] is None
+    assert cases.collection.pipeline == [
+        {
+            "$match": {
+                "eval_type": "unit",
+                "run_id": {"$in": ["unit-1", "unit-without-scores"]},
+            }
+        },
+        {
+            "$project": {
+                "run_id": 1,
+                "scores": {
+                    "$objectToArray": {"$ifNull": ["$scores", {}]},
+                },
+            }
+        },
+        {"$unwind": "$scores"},
+        {
+            "$group": {
+                "_id": "$run_id",
+                "mean_score": {"$avg": "$scores.v"},
+            }
+        },
+    ]
