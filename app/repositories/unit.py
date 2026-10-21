@@ -27,6 +27,54 @@ class UnitRepository:
         self.runs = MongoRepository(database[settings.unit_runs_collection])
         self.cases = MongoRepository(database[settings.unit_cases_collection])
 
+    async def _with_mean_scores(
+        self, runs: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Add each run's mean metric score without loading full case records."""
+        run_ids = [str(run["run_id"]) for run in runs]
+        if not run_ids:
+            return runs
+
+        pipeline: list[dict[str, Any]] = [
+            {
+                "$match": {
+                    "eval_type": "unit",
+                    "run_id": {"$in": run_ids},
+                }
+            },
+            {
+                "$project": {
+                    "run_id": 1,
+                    "scores": {
+                        "$objectToArray": {"$ifNull": ["$scores", {}]},
+                    },
+                }
+            },
+            {"$unwind": "$scores"},
+            {
+                "$group": {
+                    "_id": "$run_id",
+                    "mean_score": {"$avg": "$scores.v"},
+                }
+            },
+        ]
+        cursor = await self.cases.collection.aggregate(pipeline)
+        aggregates = await cursor.to_list(length=None)
+        means = {
+            str(item["_id"]): float(item["mean_score"])
+            for item in aggregates
+            if item.get("mean_score") is not None
+        }
+
+        enriched: list[dict[str, Any]] = []
+        for run in runs:
+            item = dict(run)
+            summary = dict(item.get("summary", {}))
+            summary["mean_score"] = means.get(str(item["run_id"]))
+            item["summary"] = summary
+            enriched.append(item)
+        return enriched
+
     async def list_runs(
         self,
         *,
@@ -55,7 +103,10 @@ class UnitRepository:
             query["unit_config.skill_version"] = skill_version
         if verdict:
             query["verdict"] = verdict
-        return await self.runs.list_by_time(query, limit=limit, cursor=cursor)
+        runs, next_cursor = await self.runs.list_by_time(
+            query, limit=limit, cursor=cursor
+        )
+        return await self._with_mean_scores(runs), next_cursor
 
     async def list_cases(
         self,
@@ -71,7 +122,10 @@ class UnitRepository:
         return await self.cases.list_by_id(query, limit=limit, cursor=cursor)
 
     async def get_run(self, run_id: str) -> dict[str, Any] | None:
-        return await self.runs.get_by_run_id(run_id, eval_type="unit")
+        run = await self.runs.get_by_run_id(run_id, eval_type="unit")
+        if not run:
+            return None
+        return (await self._with_mean_scores([run]))[0]
 
     async def trend(
         self,
