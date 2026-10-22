@@ -13,6 +13,10 @@ from app.config import Settings
 PRODUCT_UPDATE_NOT_FOUND = "Product update not found"
 
 
+class ProductUpdateNotFoundError(Exception):
+    """Raised when a requested product update does not exist."""
+
+
 class ProductUpdateRepository:
     def __init__(self, database: AsyncDatabase[dict[str, Any]], settings: Settings) -> None:
         self.collection = database[settings.product_updates_collection]
@@ -60,25 +64,25 @@ class ProductUpdateRepository:
             return_document=ReturnDocument.AFTER,
         )
         if document is None:
-            raise LookupError(PRODUCT_UPDATE_NOT_FOUND)
+            raise ProductUpdateNotFoundError(PRODUCT_UPDATE_NOT_FOUND)
         return self._serialize(document)
 
     async def delete(self, update_id: str) -> dict[str, Any]:
         document = await self.collection.find_one_and_delete({"_id": self._object_id(update_id)})
         if document is None:
-            raise LookupError(PRODUCT_UPDATE_NOT_FOUND)
+            raise ProductUpdateNotFoundError(PRODUCT_UPDATE_NOT_FOUND)
         return document
 
     async def get_image(self, update_id: str) -> dict[str, Any]:
         document = await self.collection.find_one({"_id": self._object_id(update_id)})
         if document is None or not document.get("image"):
-            raise LookupError(PRODUCT_UPDATE_NOT_FOUND)
+            raise ProductUpdateNotFoundError(PRODUCT_UPDATE_NOT_FOUND)
         return document["image"]
 
     @staticmethod
     def _object_id(value: str) -> ObjectId:
         if not ObjectId.is_valid(value):
-            raise LookupError(PRODUCT_UPDATE_NOT_FOUND)
+            raise ProductUpdateNotFoundError(PRODUCT_UPDATE_NOT_FOUND)
         return ObjectId(value)
 
     @staticmethod

@@ -5,10 +5,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.exception_handlers import product_update_not_found_handler
 from app.api.routes import e2e, health, product_updates, unit
 from app.config import Settings, get_settings
 from app.database import database_lifespan
 from app.middleware import AuthenticationPlaceholderMiddleware, RequestContextMiddleware
+from app.repositories.product_updates import ProductUpdateNotFoundError
 from app.services.suggestion_images import (
     SuggestionImageSettings,
     SuggestionImageStore,
@@ -52,6 +54,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = active_settings
+    app.add_exception_handler(
+        ProductUpdateNotFoundError,
+        product_update_not_found_handler,
+    )
     app.add_middleware(AuthenticationPlaceholderMiddleware)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(

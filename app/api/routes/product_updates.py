@@ -106,17 +106,14 @@ async def update_product_update(
     description: Annotated[str, Form(min_length=10, max_length=2000)],
     highlights: Annotated[str, Form()],
 ) -> ProductUpdateResponse:
-    try:
-        document = await repository.update(update_id, {
-            "status": status_value,
-            "release_date": release_date,
-            "category": category.strip(),
-            "title": title.strip(),
-            "description": description.strip(),
-            "highlights": _highlights(highlights),
-        })
-    except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    document = await repository.update(update_id, {
+        "status": status_value,
+        "release_date": release_date,
+        "category": category.strip(),
+        "title": title.strip(),
+        "description": description.strip(),
+        "highlights": _highlights(highlights),
+    })
     return ProductUpdateResponse.model_validate(document)
 
 
@@ -133,10 +130,7 @@ async def delete_product_update(
     repository: ProductUpdateRepositoryDependency,
     image_store: ProductUpdateImageStoreDependency,
 ) -> None:
-    try:
-        document = await repository.delete(update_id)
-    except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    document = await repository.delete(update_id)
     if document.get("image"):
         await image_store.delete_many([document["image"]])
 
@@ -152,10 +146,7 @@ async def get_product_update_image(
     repository: ProductUpdateRepositoryDependency,
     image_store: ProductUpdateImageStoreDependency,
 ) -> StreamingResponse:
-    try:
-        image = await repository.get_image(update_id)
-    except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    image = await repository.get_image(update_id)
     filename = str(image["filename"])
     return StreamingResponse(
         image_store.iter_download(str(image["object_name"])),
