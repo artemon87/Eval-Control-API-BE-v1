@@ -22,6 +22,7 @@ class RunSummary(APIModel):
     failed: int = 0
     pass_rate_pct: float = 0
     mean_score: float | None = None
+    mean_scores: dict[str, float] = Field(default_factory=dict)
     by_tier: dict[str, dict[str, int]] | None = None
 
 
