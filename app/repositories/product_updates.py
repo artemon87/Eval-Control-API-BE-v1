@@ -8,13 +8,12 @@ from pymongo import DESCENDING, ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
-from app.exceptions import ResourceNotFoundError
 
 
 PRODUCT_UPDATE_NOT_FOUND = "Product update not found"
 
 
-class ProductUpdateNotFoundError(ResourceNotFoundError):
+class ProductUpdateNotFoundError(Exception):
     """Raised when a requested product update does not exist."""
 
 

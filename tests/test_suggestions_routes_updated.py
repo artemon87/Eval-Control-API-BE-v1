@@ -19,7 +19,6 @@ from src.api.api_v1.routes.suggestions import (
     update_suggestion_status,
 )
 from src.models.suggestions import SuggestionStatusUpdate
-from src.repositories.suggestions import SuggestionNotFoundError
 from src.security.permissions import Permission
 
 
@@ -149,13 +148,14 @@ async def test_get_attachment_returns_private_stream_with_safe_headers() -> None
 
 
 @pytest.mark.asyncio
-async def test_get_attachment_propagates_not_found_error() -> None:
-    repo = repository(get_attachment=AsyncMock(side_effect=SuggestionNotFoundError("not found")))
-    with pytest.raises(SuggestionNotFoundError, match="not found"):
+async def test_get_attachment_missing_returns_404() -> None:
+    repo = repository(get_attachment=AsyncMock(side_effect=LookupError("not found")))
+    with pytest.raises(HTTPException) as error:
         await get_suggestion_attachment(
             suggestion_id="abc123", attachment_id="missing", viewer="user:123",
             repository=repo, image_store=image_store(),
         )
+    assert error.value.status_code == 404
 
 
 def authorization_service(permissions: set[Permission]) -> SimpleNamespace:
@@ -194,15 +194,16 @@ async def test_update_status_uses_authenticated_name_and_viewer() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_status_propagates_not_found_error() -> None:
-    repo = repository(update_status=AsyncMock(side_effect=SuggestionNotFoundError("missing")))
+async def test_update_status_missing_suggestion_returns_404() -> None:
+    repo = repository(update_status=AsyncMock(side_effect=LookupError("missing")))
     service = authorization_service({Permission.SUGGESTION_MANAGE})
-    with pytest.raises(SuggestionNotFoundError, match="missing"):
+    with pytest.raises(HTTPException) as error:
         await update_suggestion_status(
             suggestion_id="missing", payload=SuggestionStatusUpdate(status="open"),
             current_user=user(), viewer="user:123", repository=repo,
             authorization_service=service,
         )
+    assert error.value.status_code == 404
 
 
 @pytest.mark.asyncio

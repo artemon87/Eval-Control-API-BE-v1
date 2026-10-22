@@ -53,15 +53,47 @@ class UnitRepository:
             {"$unwind": "$scores"},
             {
                 "$group": {
-                    "_id": "$run_id",
+                    "_id": {
+                        "run_id": "$run_id",
+                        "metric": "$scores.k",
+                    },
                     "mean_score": {"$avg": "$scores.v"},
+                    "score_total": {"$sum": "$scores.v"},
+                    "score_count": {"$sum": 1},
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$_id.run_id",
+                    "score_total": {"$sum": "$score_total"},
+                    "score_count": {"$sum": "$score_count"},
+                    "mean_scores": {
+                        "$push": {
+                            "k": "$_id.metric",
+                            "v": "$mean_score",
+                        }
+                    },
+                }
+            },
+            {
+                "$project": {
+                    "mean_score": {
+                        "$divide": ["$score_total", "$score_count"],
+                    },
+                    "mean_scores": {"$arrayToObject": "$mean_scores"},
                 }
             },
         ]
         cursor = await self.cases.collection.aggregate(pipeline)
         aggregates = await cursor.to_list(length=None)
-        means = {
-            str(item["_id"]): float(item["mean_score"])
+        means: dict[str, tuple[float, dict[str, float]]] = {
+            str(item["_id"]): (
+                float(item["mean_score"]),
+                {
+                    str(metric): float(score)
+                    for metric, score in item.get("mean_scores", {}).items()
+                },
+            )
             for item in aggregates
             if item.get("mean_score") is not None
         }
@@ -70,7 +102,9 @@ class UnitRepository:
         for run in runs:
             item = dict(run)
             summary = dict(item.get("summary", {}))
-            summary["mean_score"] = means.get(str(item["run_id"]))
+            aggregate = means.get(str(item["run_id"]))
+            summary["mean_score"] = aggregate[0] if aggregate is not None else None
+            summary["mean_scores"] = aggregate[1] if aggregate is not None else {}
             item["summary"] = summary
             enriched.append(item)
         return enriched

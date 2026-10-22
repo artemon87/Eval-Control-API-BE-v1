@@ -55,7 +55,16 @@ class RunsCollection:
 class AggregateCursor:
     async def to_list(self, *, length: int | None) -> list[dict[str, Any]]:
         assert length is None
-        return [{"_id": "unit-1", "mean_score": 4.775}]
+        return [
+            {
+                "_id": "unit-1",
+                "mean_score": 4.775,
+                "mean_scores": {
+                    "correctness": 4.75,
+                    "tool_use_quality": 4.8,
+                },
+            }
+        ]
 
 
 class CaseCollection:
@@ -155,7 +164,12 @@ async def test_unit_repository_aggregates_mean_score_from_case_metrics() -> None
     enriched = await repository._with_mean_scores(runs)
 
     assert enriched[0]["summary"]["mean_score"] == pytest.approx(4.775)
+    assert enriched[0]["summary"]["mean_scores"] == {
+        "correctness": pytest.approx(4.75),
+        "tool_use_quality": pytest.approx(4.8),
+    }
     assert enriched[1]["summary"]["mean_score"] is None
+    assert enriched[1]["summary"]["mean_scores"] == {}
     assert cases.collection.pipeline == [
         {
             "$match": {
@@ -174,8 +188,34 @@ async def test_unit_repository_aggregates_mean_score_from_case_metrics() -> None
         {"$unwind": "$scores"},
         {
             "$group": {
-                "_id": "$run_id",
+                "_id": {
+                    "run_id": "$run_id",
+                    "metric": "$scores.k",
+                },
                 "mean_score": {"$avg": "$scores.v"},
+                "score_total": {"$sum": "$scores.v"},
+                "score_count": {"$sum": 1},
+            }
+        },
+        {
+            "$group": {
+                "_id": "$_id.run_id",
+                "score_total": {"$sum": "$score_total"},
+                "score_count": {"$sum": "$score_count"},
+                "mean_scores": {
+                    "$push": {
+                        "k": "$_id.metric",
+                        "v": "$mean_score",
+                    }
+                },
+            }
+        },
+        {
+            "$project": {
+                "mean_score": {
+                    "$divide": ["$score_total", "$score_count"],
+                },
+                "mean_scores": {"$arrayToObject": "$mean_scores"},
             }
         },
     ]

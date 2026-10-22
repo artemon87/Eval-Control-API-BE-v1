@@ -105,10 +105,16 @@ async def get_suggestion_attachment(
     repository: SuggestionRepositoryDependency,
     image_store: SuggestionImageStoreDependency,
 ) -> StreamingResponse:
-    attachment = await repository.get_attachment(
-        suggestion_id=suggestion_id,
-        attachment_id=attachment_id,
-    )
+    try:
+        attachment = await repository.get_attachment(
+            suggestion_id=suggestion_id,
+            attachment_id=attachment_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
     filename = str(attachment["filename"])
     return StreamingResponse(
@@ -153,12 +159,18 @@ async def update_suggestion_status(
     )
     
 
-    document = await repository.update_status(
-        suggestion_id=suggestion_id,
-        status=payload.status,
-        viewer=viewer,
-        updated_by_name=str(updated_by_name),
-    )
+    try:
+        document = await repository.update_status(
+            suggestion_id=suggestion_id,
+            status=payload.status,
+            viewer=viewer,
+            updated_by_name=str(updated_by_name),
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
     return SuggestionResponse.model_validate(document)
 
@@ -169,10 +181,16 @@ async def add_vote(
     viewer: Viewer,
     repository: SuggestionRepositoryDependency,
 ) -> None:
-    await repository.add_vote(
-        suggestion_id=suggestion_id,
-        user_id=viewer,
-    )
+    try:
+        await repository.add_vote(
+            suggestion_id=suggestion_id,
+            user_id=viewer,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
 
 @router.delete("/{suggestion_id}/vote", status_code=status.HTTP_204_NO_CONTENT)
@@ -181,7 +199,13 @@ async def remove_vote(
     viewer: Viewer,
     repository: SuggestionRepositoryDependency,
 ) -> None:
-    await repository.remove_vote(
-        suggestion_id=suggestion_id,
-        user_id=viewer,
-    )
+    try:
+        await repository.remove_vote(
+            suggestion_id=suggestion_id,
+            user_id=viewer,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc

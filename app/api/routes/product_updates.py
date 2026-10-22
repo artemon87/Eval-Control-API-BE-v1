@@ -106,17 +106,14 @@ async def update_product_update(
     description: Annotated[str, Form(min_length=10, max_length=2000)],
     highlights: Annotated[str, Form()],
 ) -> ProductUpdateResponse:
-    document = await repository.update(
-        update_id,
-        {
-            "status": status_value,
-            "release_date": release_date,
-            "category": category.strip(),
-            "title": title.strip(),
-            "description": description.strip(),
-            "highlights": _highlights(highlights),
-        },
-    )
+    document = await repository.update(update_id, {
+        "status": status_value,
+        "release_date": release_date,
+        "category": category.strip(),
+        "title": title.strip(),
+        "description": description.strip(),
+        "highlights": _highlights(highlights),
+    })
     return ProductUpdateResponse.model_validate(document)
 
 
