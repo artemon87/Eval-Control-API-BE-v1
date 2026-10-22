@@ -23,6 +23,7 @@ from src.api.api_v1.routes.suggestions import (
     update_suggestion_status,
 )
 from src.models.suggestions import SuggestionListResponse, SuggestionStatusUpdate
+from src.repositories.suggestions import SuggestionNotFoundError
 from src.security.permissions import Permission
 
 
@@ -150,14 +151,13 @@ async def test_get_attachment_returns_private_stream_with_safe_headers() -> None
     assert b"".join(chunks) == b"helloworld"
 
 
-async def test_get_attachment_missing_returns_404() -> None:
-    repo = repository(get_attachment=AsyncMock(side_effect=LookupError("not found")))
-    with pytest.raises(HTTPException) as error:
+async def test_get_attachment_propagates_not_found_error() -> None:
+    repo = repository(get_attachment=AsyncMock(side_effect=SuggestionNotFoundError("not found")))
+    with pytest.raises(SuggestionNotFoundError, match="not found"):
         await get_suggestion_attachment(
             suggestion_id="abc123", attachment_id="missing", _viewer="user:123",
             repository=repo, image_store=image_store(),
         )
-    assert error.value.status_code == 404
 
 
 def authorization_service(permissions: set[Permission]) -> Any:
@@ -193,16 +193,15 @@ async def test_update_status_uses_authenticated_name_and_viewer() -> None:
     )
 
 
-async def test_update_status_missing_suggestion_returns_404() -> None:
-    repo = repository(update_status=AsyncMock(side_effect=LookupError("missing")))
+async def test_update_status_propagates_not_found_error() -> None:
+    repo = repository(update_status=AsyncMock(side_effect=SuggestionNotFoundError("missing")))
     service = authorization_service({Permission.SUGGESTION_MANAGE})
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(SuggestionNotFoundError, match="missing"):
         await update_suggestion_status(
             suggestion_id="missing", payload=SuggestionStatusUpdate(status="open"),
             current_user=user(), viewer="user:123", repository=repo,
             authorization_service=service,
         )
-    assert error.value.status_code == 404
 
 
 async def test_update_status_falls_back_to_email() -> None:
@@ -267,7 +266,7 @@ async def test_list_suggestions_preserves_repository_order() -> None:
 
 class _VoteRepository:
     def __init__(self, *, raise_lookup_error: bool = False) -> None:
-        error = LookupError("Suggestion not found")
+        error = SuggestionNotFoundError("Suggestion not found")
         side_effect = error if raise_lookup_error else None
         self.add_vote = AsyncMock(side_effect=side_effect)
         self.remove_vote = AsyncMock(side_effect=side_effect)
@@ -279,12 +278,10 @@ async def test_add_vote_passes_suggestion_id_and_viewer() -> None:
     repo.add_vote.assert_awaited_once_with(suggestion_id="suggestion-1", user_id="user:1")
 
 
-async def test_add_vote_returns_404_when_suggestion_missing() -> None:
+async def test_add_vote_propagates_not_found_error() -> None:
     repo = _VoteRepository(raise_lookup_error=True)
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(SuggestionNotFoundError, match="Suggestion not found"):
         await add_vote("missing", "user:1", cast(Any, repo))
-    assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "Suggestion not found"
 
 
 async def test_remove_vote_passes_suggestion_id_and_viewer() -> None:
@@ -293,12 +290,10 @@ async def test_remove_vote_passes_suggestion_id_and_viewer() -> None:
     repo.remove_vote.assert_awaited_once_with(suggestion_id="suggestion-1", user_id="user:1")
 
 
-async def test_remove_vote_returns_404_when_suggestion_missing() -> None:
+async def test_remove_vote_propagates_not_found_error() -> None:
     repo = _VoteRepository(raise_lookup_error=True)
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(SuggestionNotFoundError, match="Suggestion not found"):
         await remove_vote("missing", "user:1", cast(Any, repo))
-    assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "Suggestion not found"
 
 
 async def test_create_falls_back_to_viewer_identity_without_name_or_email() -> None:

@@ -8,9 +8,14 @@ from pymongo import DESCENDING, ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
+from app.exceptions import ResourceNotFoundError
 
 
 PRODUCT_UPDATE_NOT_FOUND = "Product update not found"
+
+
+class ProductUpdateNotFoundError(ResourceNotFoundError):
+    """Raised when a requested product update does not exist."""
 
 
 class ProductUpdateRepository:
@@ -60,25 +65,25 @@ class ProductUpdateRepository:
             return_document=ReturnDocument.AFTER,
         )
         if document is None:
-            raise LookupError(PRODUCT_UPDATE_NOT_FOUND)
+            raise ProductUpdateNotFoundError(PRODUCT_UPDATE_NOT_FOUND)
         return self._serialize(document)
 
     async def delete(self, update_id: str) -> dict[str, Any]:
         document = await self.collection.find_one_and_delete({"_id": self._object_id(update_id)})
         if document is None:
-            raise LookupError(PRODUCT_UPDATE_NOT_FOUND)
+            raise ProductUpdateNotFoundError(PRODUCT_UPDATE_NOT_FOUND)
         return document
 
     async def get_image(self, update_id: str) -> dict[str, Any]:
         document = await self.collection.find_one({"_id": self._object_id(update_id)})
         if document is None or not document.get("image"):
-            raise LookupError(PRODUCT_UPDATE_NOT_FOUND)
+            raise ProductUpdateNotFoundError(PRODUCT_UPDATE_NOT_FOUND)
         return document["image"]
 
     @staticmethod
     def _object_id(value: str) -> ObjectId:
         if not ObjectId.is_valid(value):
-            raise LookupError(PRODUCT_UPDATE_NOT_FOUND)
+            raise ProductUpdateNotFoundError(PRODUCT_UPDATE_NOT_FOUND)
         return ObjectId(value)
 
     @staticmethod

@@ -8,10 +8,15 @@ from pymongo import DESCENDING
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import DuplicateKeyError
 
+from app.exceptions import ResourceNotFoundError
 from src.config import Settings
 from src.repositories.base import MongoRepository, normalize_document
 
 SUGGESTION_NOT_FOUND: str = "Suggestion not found"
+
+
+class SuggestionNotFoundError(ResourceNotFoundError):
+    """Raised when a requested suggestion does not exist."""
 
 
 class SuggestionRepository:
@@ -88,7 +93,7 @@ class SuggestionRepository:
             {"attachments.$": 1},
         )
         if not document or not document.get("attachments"):
-            raise LookupError(SUGGESTION_NOT_FOUND)
+            raise SuggestionNotFoundError(SUGGESTION_NOT_FOUND)
         return document["attachments"][0]
     
     
@@ -106,7 +111,7 @@ class SuggestionRepository:
             {"_id": object_id},
         )
         if current_document is None:
-            raise LookupError(SUGGESTION_NOT_FOUND)
+            raise SuggestionNotFoundError(SUGGESTION_NOT_FOUND)
 
         previous_status = str(
             current_document.get("status", "open"),
@@ -172,7 +177,7 @@ class SuggestionRepository:
             {"_id": 1},
         )
         if suggestion is None:
-            raise LookupError(SUGGESTION_NOT_FOUND)
+            raise SuggestionNotFoundError(SUGGESTION_NOT_FOUND)
 
         try:
             await self.votes.collection.insert_one(
@@ -201,7 +206,7 @@ class SuggestionRepository:
             {"_id": 1},
         )
         if suggestion is None:
-            raise LookupError(SUGGESTION_NOT_FOUND)
+            raise SuggestionNotFoundError(SUGGESTION_NOT_FOUND)
 
         result = await self.votes.collection.delete_one(
             {"suggestion_id": object_id, "user_id": user_id}
@@ -221,7 +226,7 @@ class SuggestionRepository:
     @staticmethod
     def _object_id(value: str) -> ObjectId:
         if not ObjectId.is_valid(value):
-            raise LookupError(SUGGESTION_NOT_FOUND)
+            raise SuggestionNotFoundError(SUGGESTION_NOT_FOUND)
         return ObjectId(value)
 
     @staticmethod

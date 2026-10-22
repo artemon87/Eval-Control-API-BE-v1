@@ -12,7 +12,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from src.models.suggestions import SuggestionStatus
-from src.repositories.suggestions import SuggestionRepository
+from src.repositories.suggestions import SuggestionNotFoundError, SuggestionRepository
 
 
 class _FindCursor:
@@ -242,14 +242,14 @@ async def test_create_persists_attachment_metadata_and_explicit_id() -> None:
 @pytest.mark.parametrize("method", ["add_vote", "remove_vote"])
 async def test_vote_raises_lookup_error_when_suggestion_missing(method: str) -> None:
     repo, _, _ = _new_repo(find_one_result=None)
-    with pytest.raises(LookupError):
+    with pytest.raises(SuggestionNotFoundError):
         await getattr(repo, method)(suggestion_id=str(ObjectId()), user_id="user:1")
 
 
 @pytest.mark.parametrize("method", ["add_vote", "remove_vote"])
 async def test_vote_rejects_invalid_suggestion_id(method: str) -> None:
     repo, _, _ = _new_repo(find_one_result={"_id": ObjectId()})
-    with pytest.raises(LookupError):
+    with pytest.raises(SuggestionNotFoundError):
         await getattr(repo, method)(suggestion_id="not-a-valid-object-id", user_id="user:1")
 
 
@@ -285,7 +285,7 @@ async def test_remove_vote_updates_only_when_deleted(deleted: int, expected: boo
 def test_object_id_accepts_valid_and_rejects_invalid_strings() -> None:
     identifier = ObjectId()
     assert SuggestionRepository._object_id(str(identifier)) == identifier
-    with pytest.raises(LookupError):
+    with pytest.raises(SuggestionNotFoundError):
         SuggestionRepository._object_id("not-valid")
 
 
@@ -315,7 +315,7 @@ async def test_get_attachment_returns_exact_matching_metadata() -> None:
 
 async def test_get_attachment_missing_raises_lookup_error() -> None:
     repo, _, _ = _new_repo()
-    with pytest.raises(LookupError):
+    with pytest.raises(SuggestionNotFoundError):
         await repo.get_attachment(suggestion_id=str(ObjectId()), attachment_id="missing")
 
 
@@ -358,7 +358,7 @@ async def test_same_status_does_not_change_audit_or_history() -> None:
 
 async def test_update_status_missing_raises_lookup_error() -> None:
     repo, _, _ = _new_repo()
-    with pytest.raises(LookupError):
+    with pytest.raises(SuggestionNotFoundError):
         await repo.update_status(suggestion_id=str(ObjectId()), status=_different_status(), viewer="user:123", updated_by_name="Alex")
 
 

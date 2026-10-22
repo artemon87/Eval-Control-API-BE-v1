@@ -12,7 +12,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 
 from src.models.suggestions import SuggestionStatus
-from src.repositories.suggestions import SuggestionRepository
+from src.repositories.suggestions import SuggestionNotFoundError, SuggestionRepository
 
 
 class CollectionSpy:
@@ -129,7 +129,7 @@ async def test_get_attachment_looks_up_only_requested_embedded_image() -> None:
 @pytest.mark.asyncio
 async def test_get_attachment_missing_raises_lookup_error() -> None:
     repo, _, _ = repository_with_spies()
-    with pytest.raises(LookupError):
+    with pytest.raises(SuggestionNotFoundError):
         await repo.get_attachment(suggestion_id=str(ObjectId()), attachment_id="missing")
 
 
@@ -178,7 +178,7 @@ async def test_same_status_does_not_write_audit_or_history() -> None:
 @pytest.mark.asyncio
 async def test_update_status_missing_suggestion_raises_lookup_error() -> None:
     repo, _, _ = repository_with_spies()
-    with pytest.raises(LookupError):
+    with pytest.raises(SuggestionNotFoundError):
         await repo.update_status(
             suggestion_id=str(ObjectId()), status=next_status(),
             viewer="user:123", updated_by_name="Alex Smith",

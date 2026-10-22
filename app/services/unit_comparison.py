@@ -2,8 +2,13 @@ from collections import defaultdict
 from statistics import fmean
 from typing import Any
 
+from app.exceptions import ResourceNotFoundError
 from app.models import MetricComparison, UnitComparison, UnitRun
 from app.repositories import UnitRepository
+
+
+class UnitComparisonNotFoundError(ResourceNotFoundError):
+    """Raised when the runs required for a unit comparison do not exist."""
 
 
 def _metric_means(cases: list[dict[str, Any]], run_id: str) -> dict[str, float]:
@@ -27,7 +32,9 @@ async def build_unit_comparison(
 ) -> UnitComparison:
     version_runs = await repository.latest_runs_by_version(skill, environment)
     if not version_runs:
-        raise LookupError(f"No completed unit runs found for skill '{skill}'")
+        raise UnitComparisonNotFoundError(
+            f"No completed unit runs found for skill '{skill}'"
+        )
 
     versions = [str(run["unit_config"]["skill_version"]) for run in version_runs]
     candidate = candidate_version or versions[0]
@@ -36,7 +43,9 @@ async def build_unit_comparison(
     else:
         baseline = next((version for version in versions if version != candidate), None)
         if baseline is None:
-            raise LookupError("At least two distinct skill versions are required for comparison")
+            raise UnitComparisonNotFoundError(
+                "At least two distinct skill versions are required for comparison"
+            )
 
     if baseline == candidate:
         raise ValueError("baseline_version and candidate_version must be different")
@@ -45,7 +54,9 @@ async def build_unit_comparison(
     candidate_document = await repository.latest_run_for_version(skill, candidate, environment)
     baseline_document = await repository.latest_run_for_version(skill, baseline, environment)
     if not candidate_document or not baseline_document:
-        raise LookupError("A completed run was not found for one of the requested versions")
+        raise UnitComparisonNotFoundError(
+            "A completed run was not found for one of the requested versions"
+        )
 
     candidate_run = UnitRun.model_validate(candidate_document)
     baseline_run = UnitRun.model_validate(baseline_document)

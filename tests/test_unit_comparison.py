@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 
 from app.services import build_unit_comparison
+from app.services.unit_comparison import UnitComparisonNotFoundError
 
 
 def run(version: str, pass_rate: float, duration: float, run_id: str) -> dict[str, Any]:
@@ -65,3 +66,17 @@ async def test_default_comparison_is_latest_vs_previous() -> None:
         "general_quality": 1,
         "tool_use_quality": 1,
     }
+
+
+async def test_comparison_raises_specific_error_when_runs_are_missing() -> None:
+    repository = FakeRepository()
+    repository.runs = []
+
+    with pytest.raises(UnitComparisonNotFoundError, match="No completed unit runs"):
+        await build_unit_comparison(  # type: ignore[arg-type]
+            repository,
+            skill="feedback-skill",
+            environment="staging",
+            baseline_version=None,
+            candidate_version=None,
+        )
