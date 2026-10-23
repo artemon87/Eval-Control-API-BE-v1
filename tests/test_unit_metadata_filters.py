@@ -26,7 +26,8 @@ class RouteRepository:
                         "bsa_environment": "staging",
                         "skill_version": "1.0.0",
                         "category": "domain-skills",
-                        "target_environment": "5-prod-sales",
+                        "stage": "5-prod-sales",
+                        "target_environment": "us-east4-prod-sales",
                         "agent_name": "oneview-agent",
                     },
                     "summary": {
@@ -88,17 +89,20 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
     page = await list_unit_runs(
         cast(UnitRepository, repository),
         environment="staging",
-        target_environment="5-prod-sales",
+        stage=["5-prod-sales"],
+        target_environment="us-east4-prod-sales",
         category="domain-skills",
         agent_name="oneview-agent",
         limit=25,
     )
 
     assert page.items[0].unit_config.category == "domain-skills"
+    assert page.items[0].unit_config.stage == "5-prod-sales"
     assert repository.request == {
         "skill": None,
         "environment": "staging",
-        "target_environment": "5-prod-sales",
+        "stage": ["5-prod-sales"],
+        "target_environment": "us-east4-prod-sales",
         "category": "domain-skills",
         "agent_name": "oneview-agent",
         "skill_version": None,
@@ -117,7 +121,8 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
     await repository.list_runs(
         skill=None,
         environment="staging",
-        target_environment="5-prod-sales",
+        stage=["5-prod-sales", "4-prod"],
+        target_environment="us-east4-prod-sales",
         category="domain-skills",
         agent_name="oneview-agent",
         skill_version=None,
@@ -129,9 +134,42 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
     assert runs.query == {
         "eval_type": "unit",
         "environment": "staging",
-        "unit_config.target_environment": "5-prod-sales",
+        "unit_config.stage": {"$in": ["5-prod-sales", "4-prod"]},
+        "unit_config.target_environment": "us-east4-prod-sales",
         "unit_config.category": "domain-skills",
         "unit_config.agent_name": "oneview-agent",
+    }
+
+
+@pytest.mark.asyncio
+async def test_unit_repository_stage_filter_keeps_legacy_stage_records_visible() -> None:
+    repository = UnitRepository.__new__(UnitRepository)
+    runs = RunsCollection()
+    repository.runs = runs  # type: ignore[assignment]
+
+    await repository.list_runs(
+        skill=None,
+        environment=None,
+        stage=["1-dev-staging", "2-dev-preprod"],
+        target_environment=None,
+        category=None,
+        agent_name=None,
+        skill_version=None,
+        verdict=None,
+        limit=50,
+        cursor=None,
+    )
+
+    stage_match = {"$in": ["1-dev-staging", "2-dev-preprod"]}
+    assert runs.query == {
+        "eval_type": "unit",
+        "$or": [
+            {"unit_config.stage": stage_match},
+            {
+                "unit_config.stage": {"$exists": False},
+                "unit_config.target_environment": stage_match,
+            },
+        ],
     }
 
 

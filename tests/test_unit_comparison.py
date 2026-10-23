@@ -30,12 +30,22 @@ class FakeRepository:
         self.runs = [run("1.3.0", 90, 1200, "new"), run("1.2.0", 80, 1500, "old")]
 
     async def latest_runs_by_version(
-        self, skill: str, environment: str | None, limit: int = 20
+        self,
+        skill: str,
+        environment: str | None,
+        stage: str | None = None,
+        target_environment: str | None = None,
+        limit: int = 20,
     ) -> list[dict[str, Any]]:
         return deepcopy(self.runs)
 
     async def latest_run_for_version(
-        self, skill: str, version: str, environment: str | None
+        self,
+        skill: str,
+        version: str,
+        environment: str | None,
+        stage: str | None = None,
+        target_environment: str | None = None,
     ) -> dict[str, Any] | None:
         return deepcopy(
             next(item for item in self.runs if item["unit_config"]["skill_version"] == version)

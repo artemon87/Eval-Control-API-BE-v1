@@ -22,10 +22,14 @@ async def build_unit_comparison(
     *,
     skill: str,
     environment: str | None,
-    baseline_version: str | None,
-    candidate_version: str | None,
+    stage: str | None = None,
+    target_environment: str | None = None,
+    baseline_version: str | None = None,
+    candidate_version: str | None = None,
 ) -> UnitComparison:
-    version_runs = await repository.latest_runs_by_version(skill, environment)
+    version_runs = await repository.latest_runs_by_version(
+        skill, environment, stage, target_environment
+    )
     if not version_runs:
         raise LookupError(f"No completed unit runs found for skill '{skill}'")
 
@@ -42,8 +46,12 @@ async def build_unit_comparison(
         raise ValueError("baseline_version and candidate_version must be different")
     assert baseline is not None
 
-    candidate_document = await repository.latest_run_for_version(skill, candidate, environment)
-    baseline_document = await repository.latest_run_for_version(skill, baseline, environment)
+    candidate_document = await repository.latest_run_for_version(
+        skill, candidate, environment, stage, target_environment
+    )
+    baseline_document = await repository.latest_run_for_version(
+        skill, baseline, environment, stage, target_environment
+    )
     if not candidate_document or not baseline_document:
         raise LookupError("A completed run was not found for one of the requested versions")
 

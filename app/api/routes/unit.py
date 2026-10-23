@@ -16,6 +16,7 @@ async def list_unit_runs(
     repository: UnitRepositoryDependency,
     skill: str | None = None,
     environment: str | None = None,
+    stage: Annotated[list[str] | None, Query()] = None,
     target_environment: str | None = None,
     category: str | None = None,
     agent_name: str | None = None,
@@ -28,6 +29,7 @@ async def list_unit_runs(
         items, next_cursor = await repository.list_runs(
             skill=skill,
             environment=environment,
+            stage=stage,
             target_environment=target_environment,
             category=category,
             agent_name=agent_name,
@@ -72,6 +74,7 @@ async def unit_case_trend(
     repository: UnitRepositoryDependency,
     skill: str,
     environment: str | None = None,
+    stage: str | None = None,
     target_environment: str | None = None,
     category: str | None = None,
     limit: Limit = 30,
@@ -83,6 +86,7 @@ async def unit_case_trend(
             skill=skill,
             case_id=case_id,
             environment=environment,
+            stage=stage,
             target_environment=target_environment,
             category=category,
             limit=limit,
@@ -98,6 +102,7 @@ async def unit_skill_trend(
     skill: str,
     repository: UnitRepositoryDependency,
     environment: str | None = None,
+    stage: str | None = None,
     target_environment: str | None = None,
     category: str | None = None,
     limit: Limit = 30,
@@ -109,6 +114,7 @@ async def unit_skill_trend(
             skill=skill,
             case_id=None,
             environment=environment,
+            stage=stage,
             target_environment=target_environment,
             category=category,
             limit=limit,
@@ -124,8 +130,12 @@ async def list_skill_versions(
     skill: str,
     repository: UnitRepositoryDependency,
     environment: str | None = None,
+    stage: str | None = None,
+    target_environment: str | None = None,
 ) -> list[UnitVersionSummary]:
-    runs = await repository.latest_runs_by_version(skill, environment)
+    runs = await repository.latest_runs_by_version(
+        skill, environment, stage, target_environment
+    )
     def started_at(run: dict[str, object]) -> str | None:
         value = run.get("started_at")
         return value.isoformat() if isinstance(value, datetime) else None
@@ -148,6 +158,8 @@ async def compare_skill_versions(
     skill: str,
     repository: UnitRepositoryDependency,
     environment: str | None = None,
+    stage: str | None = None,
+    target_environment: str | None = None,
     baseline_version: str | None = None,
     candidate_version: str | None = None,
 ) -> UnitComparison:
@@ -156,6 +168,8 @@ async def compare_skill_versions(
             repository,
             skill=skill,
             environment=environment,
+            stage=stage,
+            target_environment=target_environment,
             baseline_version=baseline_version,
             candidate_version=candidate_version,
         )

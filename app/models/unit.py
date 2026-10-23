@@ -16,6 +16,7 @@ class UnitConfig(APIModel):
     evaluation_layer: str | None = None
     n_runs: int | None = None
     category: str | None = None
+    stage: str | None = None
     target_environment: str | None = None
     agent_name: str | None = None
 
@@ -44,6 +45,15 @@ class ToolCall(APIModel):
     tool_call_id: str | None = None
 
 
+class UnitCaseMeta(APIModel):
+    skill_version: str | None = None
+    bsa_version: str | None = None
+    agent_name: str | None = None
+    category: str | None = None
+    stage: str | None = None
+    target_environment: str | None = None
+
+
 class UnitCase(APIModel):
     id: str | None = Field(default=None, alias="_id")
     case_id: str
@@ -63,6 +73,7 @@ class UnitCase(APIModel):
     error: str | None = None
     skill_version: str
     bsa_version: str = "unknown"
+    case_meta: UnitCaseMeta | None = None
 
     @field_validator("bsa_version", mode="before")
     @classmethod

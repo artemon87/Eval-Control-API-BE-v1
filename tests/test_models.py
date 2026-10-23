@@ -69,10 +69,17 @@ def test_unit_case_defaults_null_bsa_version_to_unknown() -> None:
             "verdict": "passed",
             "skill_version": "1.3.0",
             "bsa_version": None,
+            "case_meta": {
+                "stage": "5-prod-sales",
+                "target_environment": "us-east4-prod-sales",
+            },
         }
     )
 
     assert case.bsa_version == "unknown"
+    assert case.case_meta is not None
+    assert case.case_meta.stage == "5-prod-sales"
+    assert case.case_meta.target_environment == "us-east4-prod-sales"
 
 
 def test_unit_run_accepts_optional_scope_metadata() -> None:
@@ -82,7 +89,8 @@ def test_unit_run_accepts_optional_scope_metadata() -> None:
     unit_config.update(
         {
             "category": "domain-skills",
-            "target_environment": "5-prod-sales",
+            "stage": "5-prod-sales",
+            "target_environment": "us-east4-prod-sales",
             "agent_name": "oneview-agent",
         }
     )
@@ -90,7 +98,8 @@ def test_unit_run_accepts_optional_scope_metadata() -> None:
     run = UnitRun.model_validate(document)
 
     assert run.unit_config.category == "domain-skills"
-    assert run.unit_config.target_environment == "5-prod-sales"
+    assert run.unit_config.stage == "5-prod-sales"
+    assert run.unit_config.target_environment == "us-east4-prod-sales"
     assert run.unit_config.agent_name == "oneview-agent"
 
 
@@ -98,5 +107,6 @@ def test_unit_run_keeps_scope_metadata_optional_for_historical_records() -> None
     run = UnitRun.model_validate(unit_run_document())
 
     assert run.unit_config.category is None
+    assert run.unit_config.stage is None
     assert run.unit_config.target_environment is None
     assert run.unit_config.agent_name is None
