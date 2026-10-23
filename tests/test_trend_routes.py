@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -26,12 +27,16 @@ class TrendRepository:
 @pytest.mark.asyncio
 async def test_e2e_case_trend_is_scoped_and_cursor_paginated() -> None:
     repository = TrendRepository()
+    started_from = datetime(2026, 10, 1, tzinfo=UTC)
+    started_before = datetime(2026, 10, 8, tzinfo=UTC)
     page = await e2e_case_trend(
         "navigation::timecard",
         repository,
         stage="1-dev-staging",
         target="us-east4-dev-staging",
         suite="navigation",
+        started_from=started_from,
+        started_before=started_before,
         limit=30,
         cursor="cursor-1",
     )
@@ -44,6 +49,8 @@ async def test_e2e_case_trend_is_scoped_and_cursor_paginated() -> None:
         "stage": "1-dev-staging",
         "target": "us-east4-dev-staging",
         "suite": "navigation",
+        "started_from": started_from,
+        "started_before": started_before,
         "limit": 30,
         "cursor": "cursor-1",
     }
@@ -68,6 +75,8 @@ async def test_unit_skill_trend_is_scoped_and_cursor_paginated() -> None:
         "environment": "staging",
         "target_environment": None,
         "category": None,
+        "started_from": None,
+        "started_before": None,
         "limit": 25,
         "cursor": None,
     }

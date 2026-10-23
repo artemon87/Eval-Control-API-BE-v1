@@ -1,9 +1,11 @@
+from datetime import datetime
 from typing import Any
 
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
 from app.repositories.base import MongoRepository, normalize_document
+from app.repositories.time_window import apply_started_at_window
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:
@@ -32,6 +34,8 @@ class E2ERepository:
         stage: str | None,
         target: str | None,
         verdict: str | None,
+        started_from: datetime | None,
+        started_before: datetime | None,
         limit: int,
         cursor: str | None,
     ) -> tuple[list[dict[str, Any]], str | None]:
@@ -42,6 +46,11 @@ class E2ERepository:
             query["target"] = target
         if verdict:
             query["verdict"] = verdict
+        apply_started_at_window(
+            query,
+            started_from=started_from,
+            started_before=started_before,
+        )
         return await self.runs.list_by_time(query, limit=limit, cursor=cursor)
 
     async def list_cases(
@@ -71,6 +80,8 @@ class E2ERepository:
         stage: str | None,
         target: str | None,
         suite: str | None,
+        started_from: datetime | None,
+        started_before: datetime | None,
         limit: int,
         cursor: str | None,
     ) -> tuple[list[dict[str, Any]], str | None]:
@@ -83,6 +94,11 @@ class E2ERepository:
             run_query["stage"] = stage
         if target:
             run_query["target"] = target
+        apply_started_at_window(
+            run_query,
+            started_from=started_from,
+            started_before=started_before,
+        )
         runs, next_cursor = await self.runs.list_by_time(
             run_query, limit=limit, cursor=cursor
         )
