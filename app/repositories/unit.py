@@ -114,6 +114,7 @@ class UnitRepository:
         *,
         skill: str | None,
         environment: str | None,
+        stage: list[str] | None,
         target_environment: str | None,
         category: str | None,
         agent_name: str | None,
@@ -127,6 +128,20 @@ class UnitRepository:
             query["skill"] = skill
         if environment:
             query["environment"] = environment
+        if stage:
+            stage_match: str | dict[str, list[str]] = (
+                stage[0] if len(stage) == 1 else {"$in": stage}
+            )
+            if target_environment:
+                query["unit_config.stage"] = stage_match
+            else:
+                query["$or"] = [
+                    {"unit_config.stage": stage_match},
+                    {
+                        "unit_config.stage": {"$exists": False},
+                        "unit_config.target_environment": stage_match,
+                    },
+                ]
         if target_environment:
             query["unit_config.target_environment"] = target_environment
         if category:
@@ -168,6 +183,7 @@ class UnitRepository:
         skill: str,
         case_id: str | None,
         environment: str | None,
+        stage: str | None,
         target_environment: str | None,
         category: str | None,
         limit: int,
@@ -181,6 +197,17 @@ class UnitRepository:
         }
         if environment:
             run_query["environment"] = environment
+        if stage:
+            if target_environment:
+                run_query["unit_config.stage"] = stage
+            else:
+                run_query["$or"] = [
+                    {"unit_config.stage": stage},
+                    {
+                        "unit_config.stage": {"$exists": False},
+                        "unit_config.target_environment": stage,
+                    },
+                ]
         if target_environment:
             run_query["unit_config.target_environment"] = target_environment
         if category:
@@ -236,7 +263,12 @@ class UnitRepository:
         return points, next_cursor
 
     async def latest_runs_by_version(
-        self, skill: str, environment: str | None, limit: int = 20
+        self,
+        skill: str,
+        environment: str | None,
+        stage: str | None = None,
+        target_environment: str | None = None,
+        limit: int = 20,
     ) -> list[dict[str, Any]]:
         match: dict[str, Any] = {
             "eval_type": "unit",
@@ -245,6 +277,19 @@ class UnitRepository:
         }
         if environment:
             match["environment"] = environment
+        if stage:
+            if target_environment:
+                match["unit_config.stage"] = stage
+            else:
+                match["$or"] = [
+                    {"unit_config.stage": stage},
+                    {
+                        "unit_config.stage": {"$exists": False},
+                        "unit_config.target_environment": stage,
+                    },
+                ]
+        if target_environment:
+            match["unit_config.target_environment"] = target_environment
         pipeline: list[dict[str, Any]] = [
             {"$match": match},
             {"$sort": {"started_at": -1, "_id": -1}},
@@ -258,7 +303,12 @@ class UnitRepository:
         return [normalize_document(document) for document in documents]
 
     async def latest_run_for_version(
-        self, skill: str, version: str, environment: str | None
+        self,
+        skill: str,
+        version: str,
+        environment: str | None,
+        stage: str | None = None,
+        target_environment: str | None = None,
     ) -> dict[str, Any] | None:
         query: dict[str, Any] = {
             "eval_type": "unit",
@@ -268,6 +318,19 @@ class UnitRepository:
         }
         if environment:
             query["environment"] = environment
+        if stage:
+            if target_environment:
+                query["unit_config.stage"] = stage
+            else:
+                query["$or"] = [
+                    {"unit_config.stage": stage},
+                    {
+                        "unit_config.stage": {"$exists": False},
+                        "unit_config.target_environment": stage,
+                    },
+                ]
+        if target_environment:
+            query["unit_config.target_environment"] = target_environment
         document = await self.runs.collection.find_one(
             query, sort=[("started_at", DESCENDING), ("_id", DESCENDING)]
         )
