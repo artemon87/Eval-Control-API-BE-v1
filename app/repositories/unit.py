@@ -129,19 +129,9 @@ class UnitRepository:
         if environment:
             query["environment"] = environment
         if stage:
-            stage_match: str | dict[str, list[str]] = (
+            query["unit_config.stage"] = (
                 stage[0] if len(stage) == 1 else {"$in": stage}
             )
-            if target_environment:
-                query["unit_config.stage"] = stage_match
-            else:
-                query["$or"] = [
-                    {"unit_config.stage": stage_match},
-                    {
-                        "unit_config.stage": {"$exists": False},
-                        "unit_config.target_environment": stage_match,
-                    },
-                ]
         if target_environment:
             query["unit_config.target_environment"] = target_environment
         if category:
@@ -198,16 +188,7 @@ class UnitRepository:
         if environment:
             run_query["environment"] = environment
         if stage:
-            if target_environment:
-                run_query["unit_config.stage"] = stage
-            else:
-                run_query["$or"] = [
-                    {"unit_config.stage": stage},
-                    {
-                        "unit_config.stage": {"$exists": False},
-                        "unit_config.target_environment": stage,
-                    },
-                ]
+            run_query["unit_config.stage"] = stage
         if target_environment:
             run_query["unit_config.target_environment"] = target_environment
         if category:
@@ -278,16 +259,7 @@ class UnitRepository:
         if environment:
             match["environment"] = environment
         if stage:
-            if target_environment:
-                match["unit_config.stage"] = stage
-            else:
-                match["$or"] = [
-                    {"unit_config.stage": stage},
-                    {
-                        "unit_config.stage": {"$exists": False},
-                        "unit_config.target_environment": stage,
-                    },
-                ]
+            match["unit_config.stage"] = stage
         if target_environment:
             match["unit_config.target_environment"] = target_environment
         pipeline: list[dict[str, Any]] = [
@@ -319,16 +291,7 @@ class UnitRepository:
         if environment:
             query["environment"] = environment
         if stage:
-            if target_environment:
-                query["unit_config.stage"] = stage
-            else:
-                query["$or"] = [
-                    {"unit_config.stage": stage},
-                    {
-                        "unit_config.stage": {"$exists": False},
-                        "unit_config.target_environment": stage,
-                    },
-                ]
+            query["unit_config.stage"] = stage
         if target_environment:
             query["unit_config.target_environment"] = target_environment
         document = await self.runs.collection.find_one(
