@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
@@ -85,6 +86,8 @@ class CasesRepository:
 @pytest.mark.asyncio
 async def test_unit_run_route_forwards_configuration_filters() -> None:
     repository = RouteRepository()
+    started_from = datetime(2026, 10, 1, tzinfo=UTC)
+    started_before = datetime(2026, 10, 8, tzinfo=UTC)
 
     page = await list_unit_runs(
         cast(UnitRepository, repository),
@@ -93,6 +96,8 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
         target_environment="us-east4-prod-sales",
         category="domain-skills",
         agent_name="oneview-agent",
+        started_from=started_from,
+        started_before=started_before,
         limit=25,
     )
 
@@ -107,6 +112,8 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
         "agent_name": "oneview-agent",
         "skill_version": None,
         "verdict": None,
+        "started_from": started_from,
+        "started_before": started_before,
         "limit": 25,
         "cursor": None,
     }
@@ -127,6 +134,8 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
         agent_name="oneview-agent",
         skill_version=None,
         verdict=None,
+        started_from=datetime(2026, 10, 1, tzinfo=UTC),
+        started_before=datetime(2026, 10, 8, tzinfo=UTC),
         limit=50,
         cursor=None,
     )
@@ -138,6 +147,10 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
         "unit_config.target_environment": "us-east4-prod-sales",
         "unit_config.category": "domain-skills",
         "unit_config.agent_name": "oneview-agent",
+        "started_at": {
+            "$gte": datetime(2026, 10, 1, tzinfo=UTC),
+            "$lt": datetime(2026, 10, 8, tzinfo=UTC),
+        },
     }
 
 
