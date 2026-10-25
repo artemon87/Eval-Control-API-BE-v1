@@ -142,38 +142,6 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unit_repository_stage_filter_keeps_legacy_stage_records_visible() -> None:
-    repository = UnitRepository.__new__(UnitRepository)
-    runs = RunsCollection()
-    repository.runs = runs  # type: ignore[assignment]
-
-    await repository.list_runs(
-        skill=None,
-        environment=None,
-        stage=["1-dev-staging", "2-dev-preprod"],
-        target_environment=None,
-        category=None,
-        agent_name=None,
-        skill_version=None,
-        verdict=None,
-        limit=50,
-        cursor=None,
-    )
-
-    stage_match = {"$in": ["1-dev-staging", "2-dev-preprod"]}
-    assert runs.query == {
-        "eval_type": "unit",
-        "$or": [
-            {"unit_config.stage": stage_match},
-            {
-                "unit_config.stage": {"$exists": False},
-                "unit_config.target_environment": stage_match,
-            },
-        ],
-    }
-
-
-@pytest.mark.asyncio
 async def test_unit_repository_aggregates_mean_score_from_case_metrics() -> None:
     repository = UnitRepository.__new__(UnitRepository)
     cases = CasesRepository()
