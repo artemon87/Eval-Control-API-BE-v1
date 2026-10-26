@@ -1,5 +1,5 @@
 {
-  "script": "evalhub_read_api.js",
+  "script": "eval_api.js",
   "tags": {
     "team": "RAG_Agents_Platform",
     "service": "EvalHub",
