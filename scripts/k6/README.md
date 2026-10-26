@@ -1,27 +1,28 @@
-# EvalHub k6 read API tests
+# EvalHub k6 drop-in replacement for existing CI
 
-Read-only load testing for the EvalHub backend through the frontend proxy (`/api/eval` by default).
+This is a **copy into the existing performance test repository**, not a second deployment or an independent CI suite.
 
-## Running
+Replace only these existing files in `ds-tools-load-testing`:
 
-```bash
-TEST_CONFIG=./scripts/k6/config.json TEST_NAME=smoke \
-BASE_URL=http://localhost:3000 \
-k6 run scripts/k6/evalhub_read_api.js
-```
+| From backend review PR | Destination in load-testing repo |
+| --- | --- |
+| `scripts/k6/evalhub_read_api.js` | `performance/services/evalhub/endpoints/eval_api/eval_api.js` |
+| `scripts/k6/config.json` | `performance/services/evalhub/endpoints/eval_api/config.json` |
 
-For backend-direct runs use `BASE_URL=http://localhost:8000 EVAL_API_PREFIX=/api/eval` (adjust to the deployed backend API prefix).
+**Do not copy this backend repo's directory structure.** The source script imports `../../../../utils/summary.js` as in the original CI layout, which is deliberately not present here. Consequently it cannot run inside this BE repo without that utility.
 
-Set `TEST_NAME` to `smoke`, `average_load`, `stress`, or `spike`. Supported optional environment overrides: `CATEGORY`, `STAGE`, `TARGET_ENVIRONMENT`, `ENVIRONMENT`, `AGENT_NAME`, `ACCESS_TOKEN`, `SLEEP_SECONDS` and `PAGE_CASES=1`. If `TEST_CONFIG` is absent, the script uses a basic smoke profile. Configure `TEST_CONFIG` as an absolute path if the CI working directory differs.
+The original helper names and all original requests run every iteration: `parseJson`, `get`, `isPage`, `isRun`, `firstRun`, `addParameter`, `runFilterQuery`, `loadFirstPages`, `loadRunDetails`, `loadNextPage`, `loadFilteredRuns`, `loadEvalApi`, plus existing `handleSummary`.
 
-This script **never uploads images, downloads images, votes, creates updates, or mutates state**. Product update images are intentionally excluded while GCS service-account permissions are unresolved.
+New, **read-only** requests rotate through category/stage/target/agent filters, E2E stage+target, skill and case history, versions and What's New metadata. Neither GCS images nor any POST/PATCH/DELETE/upload requests are sent. Conditional request samples can be absent if the backing MongoDB collections don't contain qualifying records.
 
-Filters and history use sampled existing records; empty datasets can skip certain endpoint calls. Inspect per-endpoint sample counts before treating thresholds as coverage. Stage values may be set explicitly through environment variables. Comparison reads and unit-case trends can be added when test fixtures with known matching records are available.
+The CI JSON retains the `script`, `tags`, `tests` wrapper and four named profiles, now naming `eval_api.js`. The script supports selecting an options profile when passed `TEST_CONFIG=<path>/config.json` and `TEST_NAME=smoke|average_load|stress|spike`, but the current CI runner may separately inject k6 options; preserve any existing working injection.
 
-The thresholds in config are carried forward from the supplied CI setup as baseline starting points, not evidence of current response-time SLOs. Validate and tighten after measuring real baseline traffic.
+## Validation before using in CI
 
-## CI note
+1. Copy both files into the **existing** directory; keep the utility file unchanged.
+2. Run the original smoke pipeline with the same host/authentication and config profile settings.
+3. Verify `unit-runs`, `e2e-runs`, details/cases, filtered runs and the new endpoints report samples.
+4. Check endpoint p95 and HTTP errors; tests skipped due to absent fixtures need to be called out.
+5. Only then run average/stress/spike against an approved staging host.
 
-The existing CI config screenshot uses a wrapper-specific `tests` format. This script explicitly reads it from `TEST_CONFIG`, with `TEST_NAME` selecting the profile. If the existing CI runner automatically injects options, remove the explicit config selection or pass the same environment values. Check whether the wrapper passes `TEST_NAME` under another name before migration.
-
-For production-like tests, ensure rate limits, authorization, and approval to generate 100-VU spikes in the target environment.
+The files have not been executed in your original CI environment. The original full text was available through screenshots, not a connected source repository; verify helper and CI wrapper behavior against your working checkout before overwriting it.
