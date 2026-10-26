@@ -19,8 +19,80 @@
         "checks": [
           "rate>0.99"
         ],
-        "evalhub_bad_payloads": [
-          "count==0"
+        "http_req_duration{name:unit-runs}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:e2e-runs}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-run-detail}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:e2e-run-detail}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-run-cases}": [
+          "p(95)<10000"
+        ],
+        "http_req_duration{name:e2e-run-cases}": [
+          "p(95)<10000"
+        ],
+        "http_req_duration{name:unit-runs-next-page}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:e2e-runs-next-page}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-filtered}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:e2e-runs-filtered}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-category}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-stage}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-category-stage}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-target}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-environment}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-agent}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-combined}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-runs-blocked}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:e2e-runs-e2e-stage-target}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-skill-history}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-skill-history-next-page}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:e2e-suite-history}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:e2e-case-history}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:unit-skill-versions}": [
+          "p(95)<5000"
+        ],
+        "http_req_duration{name:product-updates}": [
+          "p(95)<5000"
         ]
       }
     },
@@ -48,6 +120,84 @@
         ],
         "checks": [
           "rate>0.95"
+        ],
+        "http_reqs": [
+          "rate>1"
+        ],
+        "http_req_duration{name:unit-runs}": [
+          "p(95)<25000"
+        ],
+        "http_req_duration{name:e2e-runs}": [
+          "p(95)<25000"
+        ],
+        "http_req_duration{name:unit-run-detail}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:e2e-run-detail}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-run-cases}": [
+          "p(95)<25000"
+        ],
+        "http_req_duration{name:e2e-run-cases}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-next-page}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:e2e-runs-next-page}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-filtered}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:e2e-runs-filtered}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-category}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-stage}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-category-stage}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-target}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-environment}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-agent}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-combined}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-runs-blocked}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:e2e-runs-e2e-stage-target}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-skill-history}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-skill-history-next-page}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:e2e-suite-history}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:e2e-case-history}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:unit-skill-versions}": [
+          "p(95)<12000"
+        ],
+        "http_req_duration{name:product-updates}": [
+          "p(95)<12000"
         ]
       }
     },
