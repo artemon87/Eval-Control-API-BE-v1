@@ -1,10 +1,11 @@
 /**
- * EvalHub read-only k6 workloads. No uploads, mutations, or image downloads.
- * CI options: TEST_CONFIG=.../config.json TEST_NAME=smoke|average_load|stress|spike
- * Host: BASE_URL=https://<host> [EVAL_API_PREFIX=/api/eval]
- * Auth: optional ACCESS_TOKEN; never log tokens.
+ * k6 load test for EvalHub eval API.
+ * Preserves original UI journey and endpoint names for CI continuity:
+ * initial Unit/E2E lists, newest run details/cases, next pages, Git filters.
+ * Extends coverage for category/stage/target, history and What's New JSON.
+ * Read-only; intentionally does NOT request GCS images or uploads.
  *
- * Runs the FE-facing /api/eval proxy by default. Set EVAL_API_PREFIX="" for BE direct.
+ * CI config: TEST_CONFIG=./scripts/k6/config.json TEST_NAME=smoke|average_load|stress|spike
  */
 import http from "k6/http";
 import { check, sleep } from "k6";
@@ -64,8 +65,7 @@ const page = (v) => v && typeof v === "object" &&
   Array.isArray(v.items) && Object.prototype.hasOwnProperty.call(v, "next_cursor");
 const run = (v) => v && typeof v === "object" && typeof v.run_id === "string";
 const updates = (v) => v && Array.isArray(v.items);
-const choose = (array) => array && array.length
-  ? array[Math.floor(Math.random() * Math.min(array.length, 20))] : null;
+const choose = (array) => array && array.length ? array[0] : null;
 const pause = () => sleep(Number(__ENV.SLEEP_SECONDS || "1"));
 const encoded = (s) => encodeURIComponent(s);
 
@@ -85,12 +85,23 @@ function cases(type, item) {
   }
 }
 function browseRuns() {
-  for (const type of ["unit", "e2e"]) {
-    const first = list(type);
-    const item = choose(first?.items);
-    if (item) cases(type, item);
-    if (first?.next_cursor) list(type, {}, first.next_cursor, "runs-next-page");
-  }
+  // Original default journey: list both types, open first run of each type,
+  // fetch cases, page forward once, then query Git/repository filters.
+  const unit = list("unit");
+  const e2e = list("e2e");
+  const unitRun = choose(unit?.items);
+  const e2eRun = choose(e2e?.items);
+  if (unitRun) cases("unit", unitRun);
+  if (e2eRun) cases("e2e", e2eRun);
+  if (unit?.next_cursor) list("unit", {}, unit.next_cursor, "runs-next-page");
+  if (e2e?.next_cursor) list("e2e", {}, e2e.next_cursor, "runs-next-page");
+  const gitFilters = (item) => ({
+    github_repository: __ENV.GITHUB_REPOSITORY || item?.github_repository,
+    git_ref: __ENV.GIT_REF || item?.git_ref,
+    git_sha: __ENV.GIT_SHA || item?.git_sha,
+  });
+  if (unitRun) list("unit", gitFilters(unitRun), null, "runs-filtered");
+  if (e2eRun) list("e2e", gitFilters(e2eRun), null, "runs-filtered");
 }
 function browseFilters() {
   const first = list("unit");
@@ -176,13 +187,13 @@ function browseVersions() {
   // Only request comparison if versions are available to avoid expected 404.
 }
 export default function () {
-  // Rotate workloads across VU iterations for varied traffic without unsupported writes.
-  const turn = (__ITER + (__VU * 7)) % 10;
-  if (turn < 4) browseRuns();
-  else if (turn < 7) browseFilters();
-  else if (turn < 9) browseHistory();
-  else browseUpdates();
-  // Additional version read every tenth iteration.
-  if ((__ITER + __VU) % 10 === 0) browseVersions();
+  // Every VU repeats the original journey. Additional reads rotate per iteration
+  // to limit amplification while still exercising recently added FE paths.
+  browseRuns();
+  const turn = (__ITER + __VU) % 4;
+  if (turn === 0) browseFilters();
+  else if (turn === 1) browseHistory();
+  else if (turn === 2) browseUpdates();
+  else browseVersions();
   pause();
 }
