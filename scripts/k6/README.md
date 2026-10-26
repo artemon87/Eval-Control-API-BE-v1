@@ -1,27 +1,17 @@
-# EvalHub k6 read API tests
+# EvalHub k6 CI script (review copy)
 
-Read-only load testing for the EvalHub backend through the frontend proxy (`/api/eval` by default).
+This directory is a review/staging location for the **existing** `ds-tools-load-testing` k6 test, not a new independent runner.
 
-## Running
+Copy:
+- `scripts/k6/evalhub_read_api.js` -> `performance/services/evalhub/endpoints/eval_api/eval_api.js`
+- `scripts/k6/config.json` -> `performance/services/evalhub/endpoints/eval_api/config.json`
 
-```bash
-TEST_CONFIG=./scripts/k6/config.json TEST_NAME=smoke \
-BASE_URL=http://localhost:3000 \
-k6 run scripts/k6/evalhub_read_api.js
-```
+The JS intentionally retains the original `../../../../utils/summary.js` import, the existing helper/function names, `handleSummary`, endpoint metric names, and `loadEvalApi()` default function. That import is **not present in the backend repository**, so running directly from `scripts/k6/` in this repository will fail until copied into the original CI repository.
 
-For backend-direct runs use `BASE_URL=http://localhost:8000 EVAL_API_PREFIX=/api/eval` (adjust to the deployed backend API prefix).
+Your CI runner already selects the named `config.json` test profile. Keep that runner as the authority rather than introducing a second execution mechanism. Confirm that `__ENV.TEST_CONFIG` is the path to k6 *options*, not the whole wrapper config; retain the working existing CI injection behavior. The screenshots do not show the surrounding runner implementation.
 
-Set `TEST_NAME` to `smoke`, `average_load`, `stress`, or `spike`. Supported optional environment overrides: `CATEGORY`, `STAGE`, `TARGET_ENVIRONMENT`, `ENVIRONMENT`, `AGENT_NAME`, `ACCESS_TOKEN`, `SLEEP_SECONDS` and `PAGE_CASES=1`. If `TEST_CONFIG` is absent, the script uses a basic smoke profile. Configure `TEST_CONFIG` as an absolute path if the CI working directory differs.
+Original journey preserved in every iteration: Unit and E2E first pages, run details and cases, next cursor pages, and filtered Git/repository requests. Additional read-only queries rotate by iteration: Unit category/stage/target/environment/agent, trends for Unit skill/case and E2E suite/case, unit version listing, and What's New JSON. These extra requests depend on test data being available.
 
-This script **never uploads images, downloads images, votes, creates updates, or mutates state**. Product update images are intentionally excluded while GCS service-account permissions are unresolved.
+No GCS images, uploads, creates, deletes, voting, or writes are executed. Existing smoke/average/stress/spike stages and endpoint metric names are retained in config.json, with expanded per-endpoint thresholds.
 
-Filters and history use sampled existing records; empty datasets can skip certain endpoint calls. Inspect per-endpoint sample counts before treating thresholds as coverage. Stage values may be set explicitly through environment variables. Comparison reads and unit-case trends can be added when test fixtures with known matching records are available.
-
-The thresholds in config are carried forward from the supplied CI setup as baseline starting points, not evidence of current response-time SLOs. Validate and tighten after measuring real baseline traffic.
-
-## CI note
-
-The existing CI config screenshot uses a wrapper-specific `tests` format. This script explicitly reads it from `TEST_CONFIG`, with `TEST_NAME` selecting the profile. If the existing CI runner automatically injects options, remove the explicit config selection or pass the same environment values. Check whether the wrapper passes `TEST_NAME` under another name before migration.
-
-For production-like tests, ensure rate limits, authorization, and approval to generate 100-VU spikes in the target environment.
+**Validation required before merge into CI**: parse JavaScript with k6 in the original directory, run smoke, inspect all endpoint sample counts and request failures, and ensure the CI runner consumes the wrapper config correctly. No test run was performed during PR development.
