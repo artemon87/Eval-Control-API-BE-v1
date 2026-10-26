@@ -8,7 +8,6 @@
  */
 import http from "k6/http";
 import { check, sleep } from "k6";
-import { SharedArray } from "k6/data";
 import { Counter } from "k6/metrics";
 
 const optionsFile = __ENV.TEST_CONFIG;
@@ -99,7 +98,7 @@ function browseFilters() {
   const cfg = item?.unit_config || {};
   const category = __ENV.CATEGORY || cfg.category;
   const environment = __ENV.ENVIRONMENT || item?.environment;
-  const stage = __ENV.STAGE || item?.stage || cfg.stage;
+  const stage = __ENV.STAGE || cfg.stage || item?.stage;
   const target = __ENV.TARGET_ENVIRONMENT || cfg.target_environment;
   const agent = __ENV.AGENT_NAME || cfg.agent_name;
   // Filter combinations reflect the current FE, including repeated stage params.
@@ -125,7 +124,7 @@ function browseHistory() {
   const unitPage = list("unit", {}, null, "history-seed-unit");
   const unit = choose(unitPage?.items);
   const cfg = unit?.unit_config || {};
-  const skill = cfg.skill || cfg.skill_id || unit?.skill;
+  const skill = unit?.skill || cfg.skill_ids?.[0];
   if (skill) {
     const query = {
       limit: 30,
@@ -165,7 +164,7 @@ function browseVersions() {
   const unitPage = list("unit", {}, null, "versions-seed");
   const item = choose(unitPage?.items);
   const cfg = item?.unit_config || {};
-  const skill = cfg.skill || cfg.skill_id || item?.skill;
+  const skill = item?.skill || cfg.skill_ids?.[0];
   if (!skill) return;
   const q = params({
     environment: item.environment,
