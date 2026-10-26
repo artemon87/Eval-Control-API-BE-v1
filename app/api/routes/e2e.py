@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -15,12 +16,20 @@ async def list_e2e_runs(
     stage: str | None = None,
     target: str | None = None,
     verdict: str | None = None,
+    started_from: datetime | None = None,
+    started_before: datetime | None = None,
     limit: Limit = 50,
     cursor: str | None = None,
 ) -> Page[E2ERun]:
     try:
         items, next_cursor = await repository.list_runs(
-            stage=stage, target=target, verdict=verdict, limit=limit, cursor=cursor
+            stage=stage,
+            target=target,
+            verdict=verdict,
+            started_from=started_from,
+            started_before=started_before,
+            limit=limit,
+            cursor=cursor,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -60,6 +69,8 @@ async def e2e_case_trend(
     stage: str | None = None,
     target: str | None = None,
     suite: str | None = None,
+    started_from: datetime | None = None,
+    started_before: datetime | None = None,
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -70,6 +81,8 @@ async def e2e_case_trend(
             stage=stage,
             target=target,
             suite=suite,
+            started_from=started_from,
+            started_before=started_before,
             limit=limit,
             cursor=cursor,
         )
@@ -84,6 +97,8 @@ async def e2e_suite_trend(
     repository: E2ERepositoryDependency,
     stage: str | None = None,
     target: str | None = None,
+    started_from: datetime | None = None,
+    started_before: datetime | None = None,
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -94,6 +109,8 @@ async def e2e_suite_trend(
             stage=stage,
             target=target,
             suite=None,
+            started_from=started_from,
+            started_before=started_before,
             limit=limit,
             cursor=cursor,
         )

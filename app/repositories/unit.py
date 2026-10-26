@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from pymongo import DESCENDING
@@ -5,6 +6,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
 from app.repositories.base import MongoRepository, normalize_document
+from app.repositories.time_window import apply_started_at_window
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:
@@ -120,6 +122,8 @@ class UnitRepository:
         agent_name: str | None,
         skill_version: str | None,
         verdict: str | None,
+        started_from: datetime | None,
+        started_before: datetime | None,
         limit: int,
         cursor: str | None,
     ) -> tuple[list[dict[str, Any]], str | None]:
@@ -142,6 +146,11 @@ class UnitRepository:
             query["unit_config.skill_version"] = skill_version
         if verdict:
             query["verdict"] = verdict
+        apply_started_at_window(
+            query,
+            started_from=started_from,
+            started_before=started_before,
+        )
         runs, next_cursor = await self.runs.list_by_time(
             query, limit=limit, cursor=cursor
         )
@@ -176,6 +185,8 @@ class UnitRepository:
         stage: str | None,
         target_environment: str | None,
         category: str | None,
+        started_from: datetime | None,
+        started_before: datetime | None,
         limit: int,
         cursor: str | None,
     ) -> tuple[list[dict[str, Any]], str | None]:
@@ -193,6 +204,11 @@ class UnitRepository:
             run_query["unit_config.target_environment"] = target_environment
         if category:
             run_query["unit_config.category"] = category
+        apply_started_at_window(
+            run_query,
+            started_from=started_from,
+            started_before=started_before,
+        )
         runs, next_cursor = await self.runs.list_by_time(
             run_query, limit=limit, cursor=cursor
         )
