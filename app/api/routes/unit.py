@@ -22,8 +22,6 @@ async def list_unit_runs(
     agent_name: str | None = None,
     skill_version: str | None = None,
     verdict: str | None = None,
-    started_from: datetime | None = None,
-    started_before: datetime | None = None,
     limit: Limit = 50,
     cursor: str | None = None,
 ) -> Page[UnitRun]:
@@ -37,8 +35,6 @@ async def list_unit_runs(
             agent_name=agent_name,
             skill_version=skill_version,
             verdict=verdict,
-            started_from=started_from,
-            started_before=started_before,
             limit=limit,
             cursor=cursor,
         )
@@ -81,8 +77,6 @@ async def unit_case_trend(
     stage: str | None = None,
     target_environment: str | None = None,
     category: str | None = None,
-    started_from: datetime | None = None,
-    started_before: datetime | None = None,
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -95,8 +89,6 @@ async def unit_case_trend(
             stage=stage,
             target_environment=target_environment,
             category=category,
-            started_from=started_from,
-            started_before=started_before,
             limit=limit,
             cursor=cursor,
         )
@@ -113,8 +105,6 @@ async def unit_skill_trend(
     stage: str | None = None,
     target_environment: str | None = None,
     category: str | None = None,
-    started_from: datetime | None = None,
-    started_before: datetime | None = None,
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -127,8 +117,6 @@ async def unit_skill_trend(
             stage=stage,
             target_environment=target_environment,
             category=category,
-            started_from=started_from,
-            started_before=started_before,
             limit=limit,
             cursor=cursor,
         )
