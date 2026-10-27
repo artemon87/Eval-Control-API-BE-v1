@@ -6,6 +6,10 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.config import Settings
 from app.repositories.base import MongoRepository, normalize_document
 
+MONGO_GROUP_OPERATOR = "$group"
+UNIT_STAGE_FIELD = "unit_config.stage"
+UNIT_TARGET_ENVIRONMENT_FIELD = "unit_config.target_environment"
+
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:
     verdicts = {str(case.get("verdict", "failed")).lower() for case in cases}
@@ -20,6 +24,65 @@ def _case_verdict(cases: list[dict[str, Any]]) -> str:
 
 def _mean(values: list[float]) -> float | None:
     return sum(values) / len(values) if values else None
+
+
+def _trend_run_query(
+    *,
+    skill: str,
+    environment: str | None,
+    stage: str | None,
+    target_environment: str | None,
+    category: str | None,
+) -> dict[str, Any]:
+    query: dict[str, Any] = {
+        "eval_type": "unit",
+        "skill": skill,
+        "execution_status": "completed",
+        "started_at": {"$ne": None},
+    }
+    optional_filters = {
+        "environment": environment,
+        UNIT_STAGE_FIELD: stage,
+        UNIT_TARGET_ENVIRONMENT_FIELD: target_environment,
+        "unit_config.category": category,
+    }
+    query.update({field: value for field, value in optional_filters.items() if value})
+    return query
+
+
+def _build_trend_points(
+    runs: list[dict[str, Any]], cases_by_run: dict[str, list[dict[str, Any]]]
+) -> list[dict[str, Any]]:
+    points: list[dict[str, Any]] = []
+    for run in runs:
+        cases = cases_by_run.get(run["run_id"], [])
+        if not cases:
+            continue
+        scores = [
+            float(score)
+            for case in cases
+            for score in case.get("scores", {}).values()
+            if score is not None
+        ]
+        passed = sum(
+            str(case.get("verdict", "")).lower() in {"passed", "xpassed"}
+            for case in cases
+        )
+        config = run.get("unit_config", {})
+        points.append(
+            {
+                "run_id": run["run_id"],
+                "started_at": run["started_at"],
+                "verdict": _case_verdict(cases),
+                "score": _mean(scores),
+                "threshold": 4.0,
+                "pass_rate_pct": passed / len(cases) * 100,
+                "total_cases": len(cases),
+                "skill_version": config.get("skill_version"),
+                "bsa_version": config.get("bsa_version"),
+            }
+        )
+    return points
 
 
 class UnitRepository:
@@ -52,7 +115,7 @@ class UnitRepository:
             },
             {"$unwind": "$scores"},
             {
-                "$group": {
+                MONGO_GROUP_OPERATOR: {
                     "_id": {
                         "run_id": "$run_id",
                         "metric": "$scores.k",
@@ -63,7 +126,7 @@ class UnitRepository:
                 }
             },
             {
-                "$group": {
+                MONGO_GROUP_OPERATOR: {
                     "_id": "$_id.run_id",
                     "score_total": {"$sum": "$score_total"},
                     "score_count": {"$sum": "$score_count"},
@@ -129,11 +192,11 @@ class UnitRepository:
         if environment:
             query["environment"] = environment
         if stage:
-            query["unit_config.stage"] = (
+            query[UNIT_STAGE_FIELD] = (
                 stage[0] if len(stage) == 1 else {"$in": stage}
             )
         if target_environment:
-            query["unit_config.target_environment"] = target_environment
+            query[UNIT_TARGET_ENVIRONMENT_FIELD] = target_environment
         if category:
             query["unit_config.category"] = category
         if agent_name:
@@ -179,20 +242,13 @@ class UnitRepository:
         limit: int,
         cursor: str | None,
     ) -> tuple[list[dict[str, Any]], str | None]:
-        run_query: dict[str, Any] = {
-            "eval_type": "unit",
-            "skill": skill,
-            "execution_status": "completed",
-            "started_at": {"$ne": None},
-        }
-        if environment:
-            run_query["environment"] = environment
-        if stage:
-            run_query["unit_config.stage"] = stage
-        if target_environment:
-            run_query["unit_config.target_environment"] = target_environment
-        if category:
-            run_query["unit_config.category"] = category
+        run_query = _trend_run_query(
+            skill=skill,
+            environment=environment,
+            stage=stage,
+            target_environment=target_environment,
+            category=category,
+        )
         runs, next_cursor = await self.runs.list_by_time(
             run_query, limit=limit, cursor=cursor
         )
@@ -212,36 +268,7 @@ class UnitRepository:
             case = normalize_document(document)
             cases_by_run.setdefault(case["run_id"], []).append(case)
 
-        points: list[dict[str, Any]] = []
-        for run in runs:
-            cases = cases_by_run.get(run["run_id"], [])
-            if not cases:
-                continue
-            scores = [
-                float(score)
-                for case in cases
-                for score in case.get("scores", {}).values()
-                if score is not None
-            ]
-            passed = sum(
-                str(case.get("verdict", "")).lower() in {"passed", "xpassed"}
-                for case in cases
-            )
-            config = run.get("unit_config", {})
-            points.append(
-                {
-                    "run_id": run["run_id"],
-                    "started_at": run["started_at"],
-                    "verdict": _case_verdict(cases),
-                    "score": _mean(scores),
-                    "threshold": 4.0,
-                    "pass_rate_pct": passed / len(cases) * 100,
-                    "total_cases": len(cases),
-                    "skill_version": config.get("skill_version"),
-                    "bsa_version": config.get("bsa_version"),
-                }
-            )
-        return points, next_cursor
+        return _build_trend_points(runs, cases_by_run), next_cursor
 
     async def latest_runs_by_version(
         self,
@@ -259,13 +286,18 @@ class UnitRepository:
         if environment:
             match["environment"] = environment
         if stage:
-            match["unit_config.stage"] = stage
+            match[UNIT_STAGE_FIELD] = stage
         if target_environment:
-            match["unit_config.target_environment"] = target_environment
+            match[UNIT_TARGET_ENVIRONMENT_FIELD] = target_environment
         pipeline: list[dict[str, Any]] = [
             {"$match": match},
             {"$sort": {"started_at": -1, "_id": -1}},
-            {"$group": {"_id": "$unit_config.skill_version", "run": {"$first": "$$ROOT"}}},
+            {
+                MONGO_GROUP_OPERATOR: {
+                    "_id": "$unit_config.skill_version",
+                    "run": {"$first": "$$ROOT"},
+                }
+            },
             {"$sort": {"run.started_at": -1, "run._id": -1}},
             {"$limit": limit},
             {"$replaceRoot": {"newRoot": "$run"}},
@@ -291,9 +323,9 @@ class UnitRepository:
         if environment:
             query["environment"] = environment
         if stage:
-            query["unit_config.stage"] = stage
+            query[UNIT_STAGE_FIELD] = stage
         if target_environment:
-            query["unit_config.target_environment"] = target_environment
+            query[UNIT_TARGET_ENVIRONMENT_FIELD] = target_environment
         document = await self.runs.collection.find_one(
             query, sort=[("started_at", DESCENDING), ("_id", DESCENDING)]
         )
