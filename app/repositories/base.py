@@ -1,11 +1,31 @@
 import base64
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
 from pymongo import DESCENDING
 from pymongo.asynchronous.collection import AsyncCollection
+
+
+@dataclass(frozen=True, slots=True)
+class GitFilters:
+    github_repository: str | None = None
+    git_ref: str | None = None
+    git_sha: str | None = None
+
+
+def apply_git_filters(
+    query: dict[str, Any],
+    filters: GitFilters,
+) -> None:
+    if filters.github_repository:
+        query["github_repository"] = filters.github_repository
+    if filters.git_ref:
+        query["git_ref"] = filters.git_ref
+    if filters.git_sha:
+        query["git_sha"] = filters.git_sha
 
 
 def normalize_document(value: Any) -> Any:
