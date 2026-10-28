@@ -3,9 +3,9 @@ from typing import Any
 from pymongo import DESCENDING
 from pymongo.asynchronous.database import AsyncDatabase
 
-from app.config import Settings
-from app.models import GitFilters
-from app.repositories.base import MongoRepository, apply_git_filters, normalize_document
+from src.config import Settings
+from src.models import GitFilters
+from src.repositories.base import MongoRepository, apply_git_filters, normalize_document
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:

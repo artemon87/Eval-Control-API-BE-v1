@@ -2,8 +2,8 @@ from typing import Any
 
 from pymongo.asynchronous.database import AsyncDatabase
 
-from app.config import Settings
-from app.repositories.base import MongoRepository, normalize_document
+from src.config import Settings
+from src.repositories.base import MongoRepository, normalize_document
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:

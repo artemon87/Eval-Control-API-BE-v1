@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from app.models.common import APIModel, BaseRun, Verdict
+from src.models.common import APIModel, BaseRun, Verdict
 
 
 class E2EConfig(APIModel):

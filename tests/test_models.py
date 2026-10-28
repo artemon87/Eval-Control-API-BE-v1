@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from app.models import UnitCase, UnitRun
+from src.models import UnitCase, UnitRun
 
 
 def unit_run_document() -> dict[str, object]:

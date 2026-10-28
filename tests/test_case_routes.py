@@ -2,8 +2,8 @@ from typing import Any
 
 import pytest
 
-from app.api.routes.e2e import list_e2e_cases
-from app.api.routes.unit import list_unit_cases
+from src.api.routes.e2e import list_e2e_cases
+from src.api.routes.unit import list_unit_cases
 
 
 class CaseRepository:

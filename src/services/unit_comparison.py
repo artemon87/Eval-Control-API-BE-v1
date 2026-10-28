@@ -2,8 +2,8 @@ from collections import defaultdict
 from statistics import fmean
 from typing import Any
 
-from app.models import MetricComparison, UnitComparison, UnitRun
-from app.repositories import UnitRepository
+from src.models import MetricComparison, UnitComparison, UnitRun
+from src.repositories import UnitRepository
 
 
 def _metric_means(cases: list[dict[str, Any]], run_id: str) -> dict[str, float]:
