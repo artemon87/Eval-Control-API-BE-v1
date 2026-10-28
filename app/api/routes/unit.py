@@ -1,10 +1,11 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.dependencies import UnitRepositoryDependency
 from app.models import Page, TrendPoint, UnitCase, UnitComparison, UnitRun, UnitVersionSummary
+from app.repositories.base import GitFilters
 from app.services import build_unit_comparison
 
 router = APIRouter(prefix="/unit", tags=["unit evaluations"])
@@ -22,6 +23,7 @@ async def list_unit_runs(
     agent_name: str | None = None,
     skill_version: str | None = None,
     verdict: str | None = None,
+    git_filters: Annotated[GitFilters, Depends()] = GitFilters(),
     limit: Limit = 50,
     cursor: str | None = None,
 ) -> Page[UnitRun]:
@@ -35,6 +37,7 @@ async def list_unit_runs(
             agent_name=agent_name,
             skill_version=skill_version,
             verdict=verdict,
+            git_filters=git_filters,
             limit=limit,
             cursor=cursor,
         )
@@ -77,6 +80,7 @@ async def unit_case_trend(
     stage: str | None = None,
     target_environment: str | None = None,
     category: str | None = None,
+    git_filters: Annotated[GitFilters, Depends()] = GitFilters(),
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -89,6 +93,7 @@ async def unit_case_trend(
             stage=stage,
             target_environment=target_environment,
             category=category,
+            git_filters=git_filters,
             limit=limit,
             cursor=cursor,
         )
@@ -105,6 +110,7 @@ async def unit_skill_trend(
     stage: str | None = None,
     target_environment: str | None = None,
     category: str | None = None,
+    git_filters: Annotated[GitFilters, Depends()] = GitFilters(),
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -117,6 +123,7 @@ async def unit_skill_trend(
             stage=stage,
             target_environment=target_environment,
             category=category,
+            git_filters=git_filters,
             limit=limit,
             cursor=cursor,
         )
