@@ -4,11 +4,24 @@ from fastapi import Depends, Request
 
 from app.config import Settings
 from app.repositories import E2ERepository, ProductUpdateRepository, UnitRepository
+from app.repositories.base import GitFilters
 from app.services.suggestion_images import SuggestionImageStore
 
 
 def get_settings_from_app(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
+
+
+def get_git_filters(
+    github_repository: str | None = None,
+    git_ref: str | None = None,
+    git_sha: str | None = None,
+) -> GitFilters:
+    return GitFilters(
+        github_repository=github_repository,
+        git_ref=git_ref,
+        git_sha=git_sha,
+    )
 
 
 def get_unit_repository(request: Request) -> UnitRepository:
@@ -28,6 +41,7 @@ def get_product_update_image_store(request: Request) -> SuggestionImageStore:
 
 
 SettingsDependency = Annotated[Settings, Depends(get_settings_from_app)]
+GitFiltersDependency = Annotated[GitFilters, Depends(get_git_filters)]
 UnitRepositoryDependency = Annotated[UnitRepository, Depends(get_unit_repository)]
 E2ERepositoryDependency = Annotated[E2ERepository, Depends(get_e2e_repository)]
 ProductUpdateRepositoryDependency = Annotated[
