@@ -4,18 +4,7 @@ from pymongo import DESCENDING
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
-from app.repositories.base import (
-    GitFilters,
-    MongoRepository,
-    apply_git_filters,
-    normalize_document,
-)
-
-DEFAULT_BEHAVIORAL_THRESHOLD = 1.0
-DEFAULT_METRIC_THRESHOLD = 4.0
-MONGO_GROUP_OPERATOR = "$group"
-UNIT_STAGE_FIELD = "unit_config.stage"
-UNIT_TARGET_ENVIRONMENT_FIELD = "unit_config.target_environment"
+from app.repositories.base import MongoRepository, normalize_document
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:
@@ -31,154 +20,6 @@ def _case_verdict(cases: list[dict[str, Any]]) -> str:
 
 def _mean(values: list[float]) -> float | None:
     return sum(values) / len(values) if values else None
-
-
-def _trend_run_query(
-    *,
-    skill: str,
-    environment: str | None,
-    stage: str | None,
-    target_environment: str | None,
-    category: str | None,
-    git_filters: GitFilters,
-) -> dict[str, Any]:
-    query: dict[str, Any] = {
-        "eval_type": "unit",
-        "skill": skill,
-        "execution_status": "completed",
-        "started_at": {"$ne": None},
-    }
-    optional_filters = {
-        "environment": environment,
-        UNIT_STAGE_FIELD: stage,
-        UNIT_TARGET_ENVIRONMENT_FIELD: target_environment,
-        "unit_config.category": category,
-    }
-    query.update({field: value for field, value in optional_filters.items() if value})
-    apply_git_filters(query, git_filters)
-    return query
-
-
-def _normalized_rate(value: Any) -> float | None:
-    if value is None:
-        return None
-    rate = float(value)
-    return rate / 100 if rate > 1 else rate
-
-
-def _case_metric_values(
-    cases: list[dict[str, Any]],
-    field: str,
-    metric: str | None,
-) -> list[float]:
-    if metric is not None:
-        return [
-            float(values[metric])
-            for case in cases
-            if (values := case.get(field) or {})
-            and metric in values
-            and values[metric] is not None
-        ]
-    return [
-        float(value)
-        for case in cases
-        for value in (case.get(field) or {}).values()
-        if value is not None
-    ]
-
-
-def _behavioral_case_value(case: dict[str, Any]) -> float:
-    pass_rate = _normalized_rate(case.get("pass_rate"))
-    if pass_rate is not None:
-        return pass_rate
-
-    score_values = [
-        float(value)
-        for value in (case.get("scores") or {}).values()
-        if value is not None
-    ]
-    average_score = _mean(score_values)
-    if average_score is not None:
-        return average_score
-
-    verdict = str(case.get("verdict") or "").lower()
-    return 1.0 if verdict in {"passed", "xpassed"} else 0.0
-
-
-def _behavioral_threshold(
-    cases: list[dict[str, Any]],
-    config: dict[str, Any],
-) -> float:
-    configured_threshold = _normalized_rate(config.get("consistency_threshold"))
-    if configured_threshold is not None:
-        return configured_threshold
-
-    stored_thresholds = _case_metric_values(cases, "thresholds", None)
-    stored_threshold = _mean(stored_thresholds)
-    return (
-        stored_threshold
-        if stored_threshold is not None
-        else DEFAULT_BEHAVIORAL_THRESHOLD
-    )
-
-
-def _case_trend_values(
-    cases: list[dict[str, Any]],
-    run: dict[str, Any],
-    metric: str | None = None,
-) -> tuple[float, float]:
-    config = run.get("unit_config") or {}
-    evaluation_layer = (
-        str(config.get("evaluation_layer") or "").lower().replace("_", "-")
-    )
-    if evaluation_layer == "behavioral-contracts":
-        case_values = [_behavioral_case_value(case) for case in cases]
-        score = _mean(case_values)
-        return (
-            score if score is not None else 0.0,
-            _behavioral_threshold(cases, config),
-        )
-
-    scores = _case_metric_values(cases, "scores", metric)
-    thresholds = _case_metric_values(cases, "thresholds", metric)
-    average_score = _mean(scores)
-    average_threshold = _mean(thresholds)
-    return (
-        average_score if average_score is not None else 0.0,
-        average_threshold
-        if average_threshold is not None
-        else DEFAULT_METRIC_THRESHOLD,
-    )
-
-
-def _build_trend_points(
-    runs: list[dict[str, Any]], cases_by_run: dict[str, list[dict[str, Any]]]
-) -> list[dict[str, Any]]:
-    points: list[dict[str, Any]] = []
-    for run in runs:
-        cases = cases_by_run.get(run["run_id"], [])
-        if not cases:
-            continue
-        score, threshold = _case_trend_values(cases, run)
-        passed = sum(
-            str(case.get("verdict", "")).lower() in {"passed", "xpassed"}
-            for case in cases
-        )
-        config = run.get("unit_config", {})
-        points.append(
-            {
-                "run_id": run["run_id"],
-                "started_at": run["started_at"],
-                "verdict": _case_verdict(cases),
-                "score": score,
-                "threshold": threshold,
-                "pass_rate_pct": passed / len(cases) * 100,
-                "total_cases": len(cases),
-                "skill_version": config.get("skill_version"),
-                "bsa_version": config.get("bsa_version"),
-            }
-        )
-    return points
 
 
 class UnitRepository:
@@ -211,7 +52,7 @@ class UnitRepository:
             },
             {"$unwind": "$scores"},
             {
-                MONGO_GROUP_OPERATOR: {
+                "$group": {
                     "_id": {
                         "run_id": "$run_id",
                         "metric": "$scores.k",
@@ -222,7 +63,7 @@ class UnitRepository:
                 }
             },
             {
-                MONGO_GROUP_OPERATOR: {
+                "$group": {
                     "_id": "$_id.run_id",
                     "score_total": {"$sum": "$score_total"},
                     "score_count": {"$sum": "$score_count"},
@@ -281,7 +122,6 @@ class UnitRepository:
         verdict: str | None,
         limit: int,
         cursor: str | None,
-        git_filters: GitFilters = GitFilters(),
     ) -> tuple[list[dict[str, Any]], str | None]:
         query: dict[str, Any] = {"eval_type": "unit"}
         if skill:
@@ -289,11 +129,11 @@ class UnitRepository:
         if environment:
             query["environment"] = environment
         if stage:
-            query[UNIT_STAGE_FIELD] = (
+            query["unit_config.stage"] = (
                 stage[0] if len(stage) == 1 else {"$in": stage}
             )
         if target_environment:
-            query[UNIT_TARGET_ENVIRONMENT_FIELD] = target_environment
+            query["unit_config.target_environment"] = target_environment
         if category:
             query["unit_config.category"] = category
         if agent_name:
@@ -302,7 +142,6 @@ class UnitRepository:
             query["unit_config.skill_version"] = skill_version
         if verdict:
             query["verdict"] = verdict
-        apply_git_filters(query, git_filters)
         runs, next_cursor = await self.runs.list_by_time(
             query, limit=limit, cursor=cursor
         )
@@ -339,16 +178,21 @@ class UnitRepository:
         category: str | None,
         limit: int,
         cursor: str | None,
-        git_filters: GitFilters = GitFilters(),
     ) -> tuple[list[dict[str, Any]], str | None]:
-        run_query = _trend_run_query(
-            skill=skill,
-            environment=environment,
-            stage=stage,
-            target_environment=target_environment,
-            category=category,
-            git_filters=git_filters,
-        )
+        run_query: dict[str, Any] = {
+            "eval_type": "unit",
+            "skill": skill,
+            "execution_status": "completed",
+            "started_at": {"$ne": None},
+        }
+        if environment:
+            run_query["environment"] = environment
+        if stage:
+            run_query["unit_config.stage"] = stage
+        if target_environment:
+            run_query["unit_config.target_environment"] = target_environment
+        if category:
+            run_query["unit_config.category"] = category
         runs, next_cursor = await self.runs.list_by_time(
             run_query, limit=limit, cursor=cursor
         )
@@ -368,7 +212,36 @@ class UnitRepository:
             case = normalize_document(document)
             cases_by_run.setdefault(case["run_id"], []).append(case)
 
-        return _build_trend_points(runs, cases_by_run), next_cursor
+        points: list[dict[str, Any]] = []
+        for run in runs:
+            cases = cases_by_run.get(run["run_id"], [])
+            if not cases:
+                continue
+            scores = [
+                float(score)
+                for case in cases
+                for score in case.get("scores", {}).values()
+                if score is not None
+            ]
+            passed = sum(
+                str(case.get("verdict", "")).lower() in {"passed", "xpassed"}
+                for case in cases
+            )
+            config = run.get("unit_config", {})
+            points.append(
+                {
+                    "run_id": run["run_id"],
+                    "started_at": run["started_at"],
+                    "verdict": _case_verdict(cases),
+                    "score": _mean(scores),
+                    "threshold": 4.0,
+                    "pass_rate_pct": passed / len(cases) * 100,
+                    "total_cases": len(cases),
+                    "skill_version": config.get("skill_version"),
+                    "bsa_version": config.get("bsa_version"),
+                }
+            )
+        return points, next_cursor
 
     async def latest_runs_by_version(
         self,
@@ -386,18 +259,13 @@ class UnitRepository:
         if environment:
             match["environment"] = environment
         if stage:
-            match[UNIT_STAGE_FIELD] = stage
+            match["unit_config.stage"] = stage
         if target_environment:
-            match[UNIT_TARGET_ENVIRONMENT_FIELD] = target_environment
+            match["unit_config.target_environment"] = target_environment
         pipeline: list[dict[str, Any]] = [
             {"$match": match},
             {"$sort": {"started_at": -1, "_id": -1}},
-            {
-                MONGO_GROUP_OPERATOR: {
-                    "_id": "$unit_config.skill_version",
-                    "run": {"$first": "$$ROOT"},
-                }
-            },
+            {"$group": {"_id": "$unit_config.skill_version", "run": {"$first": "$$ROOT"}}},
             {"$sort": {"run.started_at": -1, "run._id": -1}},
             {"$limit": limit},
             {"$replaceRoot": {"newRoot": "$run"}},
@@ -423,9 +291,9 @@ class UnitRepository:
         if environment:
             query["environment"] = environment
         if stage:
-            query[UNIT_STAGE_FIELD] = stage
+            query["unit_config.stage"] = stage
         if target_environment:
-            query[UNIT_TARGET_ENVIRONMENT_FIELD] = target_environment
+            query["unit_config.target_environment"] = target_environment
         document = await self.runs.collection.find_one(
             query, sort=[("started_at", DESCENDING), ("_id", DESCENDING)]
         )
