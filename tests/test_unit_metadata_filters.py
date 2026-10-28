@@ -3,7 +3,6 @@ from typing import Any, cast
 import pytest
 
 from app.api.routes.unit import list_unit_runs
-from app.repositories.base import GitFilters
 from app.repositories.unit import UnitRepository
 
 
@@ -87,14 +86,8 @@ class CasesRepository:
 async def test_unit_run_route_forwards_configuration_filters() -> None:
     repository = RouteRepository()
 
-    git_filters = GitFilters(
-        github_repository="ukg/eval-control",
-        git_ref="feature/grouping",
-        git_sha="abc123",
-    )
     page = await list_unit_runs(
         cast(UnitRepository, repository),
-        git_filters,
         environment="staging",
         stage=["5-prod-sales"],
         target_environment="us-east4-prod-sales",
@@ -114,7 +107,6 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
         "agent_name": "oneview-agent",
         "skill_version": None,
         "verdict": None,
-        "git_filters": git_filters,
         "limit": 25,
         "cursor": None,
     }
@@ -135,11 +127,6 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
         agent_name="oneview-agent",
         skill_version=None,
         verdict=None,
-        git_filters=GitFilters(
-            github_repository="ukg/eval-control",
-            git_ref="feature/grouping",
-            git_sha="abc123",
-        ),
         limit=50,
         cursor=None,
     )
@@ -151,9 +138,6 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
         "unit_config.target_environment": "us-east4-prod-sales",
         "unit_config.category": "domain-skills",
         "unit_config.agent_name": "oneview-agent",
-        "github_repository": "ukg/eval-control",
-        "git_ref": "feature/grouping",
-        "git_sha": "abc123",
     }
 
 
