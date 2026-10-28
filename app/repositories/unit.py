@@ -6,6 +6,8 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.config import Settings
 from app.repositories.base import MongoRepository, normalize_document
 
+DEFAULT_BEHAVIORAL_THRESHOLD = 1.0
+DEFAULT_METRIC_THRESHOLD = 4.0
 MONGO_GROUP_OPERATOR = "$group"
 UNIT_STAGE_FIELD = "unit_config.stage"
 UNIT_TARGET_ENVIRONMENT_FIELD = "unit_config.target_environment"
@@ -50,6 +52,98 @@ def _trend_run_query(
     return query
 
 
+def _normalized_rate(value: Any) -> float | None:
+    if value is None:
+        return None
+    rate = float(value)
+    return rate / 100 if rate > 1 else rate
+
+
+def _case_metric_values(
+    cases: list[dict[str, Any]],
+    field: str,
+    metric: str | None,
+) -> list[float]:
+    if metric is not None:
+        return [
+            float(values[metric])
+            for case in cases
+            if (values := case.get(field) or {})
+            and metric in values
+            and values[metric] is not None
+        ]
+    return [
+        float(value)
+        for case in cases
+        for value in (case.get(field) or {}).values()
+        if value is not None
+    ]
+
+
+def _behavioral_case_value(case: dict[str, Any]) -> float:
+    pass_rate = _normalized_rate(case.get("pass_rate"))
+    if pass_rate is not None:
+        return pass_rate
+
+    score_values = [
+        float(value)
+        for value in (case.get("scores") or {}).values()
+        if value is not None
+    ]
+    average_score = _mean(score_values)
+    if average_score is not None:
+        return average_score
+
+    verdict = str(case.get("verdict") or "").lower()
+    return 1.0 if verdict in {"passed", "xpassed"} else 0.0
+
+
+def _behavioral_threshold(
+    cases: list[dict[str, Any]],
+    config: dict[str, Any],
+) -> float:
+    configured_threshold = _normalized_rate(config.get("consistency_threshold"))
+    if configured_threshold is not None:
+        return configured_threshold
+
+    stored_thresholds = _case_metric_values(cases, "thresholds", None)
+    stored_threshold = _mean(stored_thresholds)
+    return (
+        stored_threshold
+        if stored_threshold is not None
+        else DEFAULT_BEHAVIORAL_THRESHOLD
+    )
+
+
+def _case_trend_values(
+    cases: list[dict[str, Any]],
+    run: dict[str, Any],
+    metric: str | None = None,
+) -> tuple[float, float]:
+    config = run.get("unit_config") or {}
+    evaluation_layer = (
+        str(config.get("evaluation_layer") or "").lower().replace("_", "-")
+    )
+    if evaluation_layer == "behavioral-contracts":
+        case_values = [_behavioral_case_value(case) for case in cases]
+        score = _mean(case_values)
+        return (
+            score if score is not None else 0.0,
+            _behavioral_threshold(cases, config),
+        )
+
+    scores = _case_metric_values(cases, "scores", metric)
+    thresholds = _case_metric_values(cases, "thresholds", metric)
+    average_score = _mean(scores)
+    average_threshold = _mean(thresholds)
+    return (
+        average_score if average_score is not None else 0.0,
+        average_threshold
+        if average_threshold is not None
+        else DEFAULT_METRIC_THRESHOLD,
+    )
+
+
 def _build_trend_points(
     runs: list[dict[str, Any]], cases_by_run: dict[str, list[dict[str, Any]]]
 ) -> list[dict[str, Any]]:
@@ -58,12 +152,7 @@ def _build_trend_points(
         cases = cases_by_run.get(run["run_id"], [])
         if not cases:
             continue
-        scores = [
-            float(score)
-            for case in cases
-            for score in case.get("scores", {}).values()
-            if score is not None
-        ]
+        score, threshold = _case_trend_values(cases, run)
         passed = sum(
             str(case.get("verdict", "")).lower() in {"passed", "xpassed"}
             for case in cases
@@ -74,8 +163,8 @@ def _build_trend_points(
                 "run_id": run["run_id"],
                 "started_at": run["started_at"],
                 "verdict": _case_verdict(cases),
-                "score": _mean(scores),
-                "threshold": 4.0,
+                "score": score,
+                "threshold": threshold,
                 "pass_rate_pct": passed / len(cases) * 100,
                 "total_cases": len(cases),
                 "skill_version": config.get("skill_version"),
@@ -83,7 +172,6 @@ def _build_trend_points(
             }
         )
     return points
-
 
 class UnitRepository:
     def __init__(self, database: AsyncDatabase[dict[str, Any]], settings: Settings) -> None:
