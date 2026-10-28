@@ -13,7 +13,7 @@ class Page[T](APIModel):
     next_cursor: str | None = None
 
 
-class GitFilters(APIModel):
+class GitFilters(BaseModel):
     github_repository: str | None = None
     git_ref: str | None = None
     git_sha: str | None = None

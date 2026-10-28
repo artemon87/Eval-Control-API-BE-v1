@@ -3,9 +3,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.api.dependencies import UnitRepositoryDependency
+from app.api.dependencies import GitFilterDependency, UnitRepositoryDependency
 from app.models import (
-    GitFilters,
     Page,
     TrendPoint,
     UnitCase,
@@ -22,7 +21,7 @@ Limit = Annotated[int, Query(ge=1, le=200)]
 @router.get("/runs", response_model=Page[UnitRun])
 async def list_unit_runs(
     repository: UnitRepositoryDependency,
-    git_filters: Annotated[GitFilters, Query()],
+    git_filters: GitFilterDependency,
     skill: str | None = None,
     environment: str | None = None,
     stage: Annotated[list[str] | None, Query()] = None,
@@ -82,7 +81,7 @@ async def list_unit_cases(
 async def unit_case_trend(
     case_id: str,
     repository: UnitRepositoryDependency,
-    git_filters: Annotated[GitFilters, Query()],
+    git_filters: GitFilterDependency,
     skill: str,
     environment: str | None = None,
     stage: str | None = None,
@@ -113,7 +112,7 @@ async def unit_case_trend(
 async def unit_skill_trend(
     skill: str,
     repository: UnitRepositoryDependency,
-    git_filters: Annotated[GitFilters, Query()],
+    git_filters: GitFilterDependency,
     environment: str | None = None,
     stage: str | None = None,
     target_environment: str | None = None,
