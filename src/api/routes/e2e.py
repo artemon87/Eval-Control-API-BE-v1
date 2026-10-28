@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from src.api.dependencies import E2ERepositoryDependency
+from src.api.dependencies import E2ERepositoryDependency, TimeWindowDependency
 from src.models import E2ECase, E2ERun, Page, TrendPoint
 
 router = APIRouter(prefix="/e2e", tags=["E2E evaluations"])
@@ -12,6 +12,7 @@ Limit = Annotated[int, Query(ge=1, le=200)]
 @router.get("/runs", response_model=Page[E2ERun])
 async def list_e2e_runs(
     repository: E2ERepositoryDependency,
+    time_window: TimeWindowDependency,
     stage: str | None = None,
     target: str | None = None,
     verdict: str | None = None,
@@ -20,7 +21,12 @@ async def list_e2e_runs(
 ) -> Page[E2ERun]:
     try:
         items, next_cursor = await repository.list_runs(
-            stage=stage, target=target, verdict=verdict, limit=limit, cursor=cursor
+            stage=stage,
+            target=target,
+            verdict=verdict,
+            limit=limit,
+            cursor=cursor,
+            time_window=time_window,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -3,7 +3,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from src.api.dependencies import GitFilterDependency, UnitRepositoryDependency
+from src.api.dependencies import (
+    GitFilterDependency,
+    TimeWindowDependency,
+    UnitRepositoryDependency,
+)
 from src.models import (
     Page,
     TrendPoint,
@@ -22,6 +26,7 @@ Limit = Annotated[int, Query(ge=1, le=200)]
 async def list_unit_runs(
     repository: UnitRepositoryDependency,
     git_filters: GitFilterDependency,
+    time_window: TimeWindowDependency,
     skill: str | None = None,
     environment: str | None = None,
     stage: Annotated[list[str] | None, Query()] = None,
@@ -46,6 +51,7 @@ async def list_unit_runs(
             git_filters=git_filters,
             limit=limit,
             cursor=cursor,
+            time_window=time_window,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
