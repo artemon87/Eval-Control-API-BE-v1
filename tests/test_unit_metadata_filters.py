@@ -1,9 +1,10 @@
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
 
 from src.api.routes.unit import list_unit_runs
-from src.models import GitFilters
+from src.models import GitFilters, TimeWindow
 from src.repositories.unit import UnitRepository
 
 
@@ -92,9 +93,14 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
         git_ref="feature/grouping",
         git_sha="abc123",
     )
+    time_window = TimeWindow(
+        started_from=datetime(2026, 10, 1, tzinfo=UTC),
+        started_before=datetime(2026, 10, 8, tzinfo=UTC),
+    )
     page = await list_unit_runs(
         cast(UnitRepository, repository),
         git_filters,
+        time_window,
         environment="staging",
         stage=["5-prod-sales"],
         target_environment="us-east4-prod-sales",
@@ -117,6 +123,7 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
         "git_filters": git_filters,
         "limit": 25,
         "cursor": None,
+        "time_window": time_window,
     }
 
 
@@ -142,6 +149,10 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
         ),
         limit=50,
         cursor=None,
+        time_window=TimeWindow(
+            started_from=datetime(2026, 10, 1, tzinfo=UTC),
+            started_before=datetime(2026, 10, 8, tzinfo=UTC),
+        ),
     )
 
     assert runs.query == {
@@ -154,6 +165,10 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
         "github_repository": "ukg/eval-control",
         "git_ref": "feature/grouping",
         "git_sha": "abc123",
+        "started_at": {
+            "$gte": datetime(2026, 10, 1, tzinfo=UTC),
+            "$lt": datetime(2026, 10, 8, tzinfo=UTC),
+        },
     }
 
 

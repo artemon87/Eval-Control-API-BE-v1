@@ -4,8 +4,9 @@ from pymongo import DESCENDING
 from pymongo.asynchronous.database import AsyncDatabase
 
 from src.config import Settings
-from src.models import GitFilters
+from src.models import GitFilters, TimeWindow
 from src.repositories.base import MongoRepository, apply_git_filters, normalize_document
+from src.repositories.time_window import apply_started_at_window
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:
@@ -124,6 +125,7 @@ class UnitRepository:
         limit: int,
         cursor: str | None,
         git_filters: GitFilters | None = None,
+        time_window: TimeWindow | None = None,
     ) -> tuple[list[dict[str, Any]], str | None]:
         query: dict[str, Any] = {"eval_type": "unit"}
         if skill:
@@ -151,6 +153,7 @@ class UnitRepository:
                 git_filters.git_ref,
                 git_filters.git_sha,
             )
+        apply_started_at_window(query, time_window)
         runs, next_cursor = await self.runs.list_by_time(
             query, limit=limit, cursor=cursor
         )

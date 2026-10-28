@@ -19,6 +19,11 @@ class GitFilters(BaseModel):
     git_sha: str | None = None
 
 
+class TimeWindow(BaseModel):
+    started_from: datetime | None = None
+    started_before: datetime | None = None
+
+
 Verdict = Literal["passed", "failed", "blocked", "pending", "error", "xpassed"]
 
 

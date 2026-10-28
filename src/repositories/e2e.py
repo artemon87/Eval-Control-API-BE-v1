@@ -3,7 +3,9 @@ from typing import Any
 from pymongo.asynchronous.database import AsyncDatabase
 
 from src.config import Settings
+from src.models import TimeWindow
 from src.repositories.base import MongoRepository, normalize_document
+from src.repositories.time_window import apply_started_at_window
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:
@@ -34,6 +36,7 @@ class E2ERepository:
         verdict: str | None,
         limit: int,
         cursor: str | None,
+        time_window: TimeWindow | None = None,
     ) -> tuple[list[dict[str, Any]], str | None]:
         query: dict[str, Any] = {"eval_type": "e2e"}
         if stage:
@@ -42,6 +45,7 @@ class E2ERepository:
             query["target"] = target
         if verdict:
             query["verdict"] = verdict
+        apply_started_at_window(query, time_window)
         return await self.runs.list_by_time(query, limit=limit, cursor=cursor)
 
     async def list_cases(

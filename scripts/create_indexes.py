@@ -16,6 +16,14 @@ async def main() -> None:
                 IndexModel(
                     [
                         ("eval_type", ASCENDING),
+                        ("started_at", DESCENDING),
+                        ("_id", DESCENDING),
+                    ],
+                    name="evaluation_time_window",
+                ),
+                IndexModel(
+                    [
+                        ("eval_type", ASCENDING),
                         ("skill", ASCENDING),
                         ("environment", ASCENDING),
                         ("unit_config.skill_version", ASCENDING),
@@ -58,6 +66,14 @@ async def main() -> None:
         await database[settings.e2e_runs_collection].create_indexes(
             [
                 IndexModel([("run_id", ASCENDING)], unique=True, name="run_id_unique"),
+                IndexModel(
+                    [
+                        ("eval_type", ASCENDING),
+                        ("started_at", DESCENDING),
+                        ("_id", DESCENDING),
+                    ],
+                    name="evaluation_time_window",
+                ),
                 IndexModel(
                     [
                         ("eval_type", ASCENDING),
