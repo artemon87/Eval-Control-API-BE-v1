@@ -4,7 +4,15 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.dependencies import UnitRepositoryDependency
-from app.models import GitFilters, Page, TrendPoint, UnitCase, UnitComparison, UnitRun, UnitVersionSummary
+from app.models import (
+    GitFilters,
+    Page,
+    TrendPoint,
+    UnitCase,
+    UnitComparison,
+    UnitRun,
+    UnitVersionSummary,
+)
 from app.services import build_unit_comparison
 
 router = APIRouter(prefix="/unit", tags=["unit evaluations"])
