@@ -15,6 +15,7 @@ Limit = Annotated[int, Query(ge=1, le=200)]
 @router.get("/runs", response_model=Page[UnitRun])
 async def list_unit_runs(
     repository: UnitRepositoryDependency,
+    git_filters: Annotated[GitFilters, Depends()],
     skill: str | None = None,
     environment: str | None = None,
     stage: Annotated[list[str] | None, Query()] = None,
@@ -23,7 +24,6 @@ async def list_unit_runs(
     agent_name: str | None = None,
     skill_version: str | None = None,
     verdict: str | None = None,
-    git_filters: Annotated[GitFilters, Depends()] = GitFilters(),
     limit: Limit = 50,
     cursor: str | None = None,
 ) -> Page[UnitRun]:
@@ -75,12 +75,12 @@ async def list_unit_cases(
 async def unit_case_trend(
     case_id: str,
     repository: UnitRepositoryDependency,
+    git_filters: Annotated[GitFilters, Depends()],
     skill: str,
     environment: str | None = None,
     stage: str | None = None,
     target_environment: str | None = None,
     category: str | None = None,
-    git_filters: Annotated[GitFilters, Depends()] = GitFilters(),
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
@@ -106,11 +106,11 @@ async def unit_case_trend(
 async def unit_skill_trend(
     skill: str,
     repository: UnitRepositoryDependency,
+    git_filters: Annotated[GitFilters, Depends()],
     environment: str | None = None,
     stage: str | None = None,
     target_environment: str | None = None,
     category: str | None = None,
-    git_filters: Annotated[GitFilters, Depends()] = GitFilters(),
     limit: Limit = 30,
     cursor: str | None = None,
 ) -> Page[TrendPoint]:
