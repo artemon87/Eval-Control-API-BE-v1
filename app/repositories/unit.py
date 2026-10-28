@@ -4,7 +4,12 @@ from pymongo import DESCENDING
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
-from app.repositories.base import MongoRepository, normalize_document
+from app.repositories.base import (
+    GitFilters,
+    MongoRepository,
+    apply_git_filters,
+    normalize_document,
+)
 
 DEFAULT_BEHAVIORAL_THRESHOLD = 1.0
 DEFAULT_METRIC_THRESHOLD = 4.0
@@ -35,6 +40,7 @@ def _trend_run_query(
     stage: str | None,
     target_environment: str | None,
     category: str | None,
+    git_filters: GitFilters,
 ) -> dict[str, Any]:
     query: dict[str, Any] = {
         "eval_type": "unit",
@@ -49,6 +55,7 @@ def _trend_run_query(
         "unit_config.category": category,
     }
     query.update({field: value for field, value in optional_filters.items() if value})
+    apply_git_filters(query, git_filters)
     return query
 
 
@@ -273,6 +280,7 @@ class UnitRepository:
         verdict: str | None,
         limit: int,
         cursor: str | None,
+        git_filters: GitFilters = GitFilters(),
     ) -> tuple[list[dict[str, Any]], str | None]:
         query: dict[str, Any] = {"eval_type": "unit"}
         if skill:
@@ -293,6 +301,7 @@ class UnitRepository:
             query["unit_config.skill_version"] = skill_version
         if verdict:
             query["verdict"] = verdict
+        apply_git_filters(query, git_filters)
         runs, next_cursor = await self.runs.list_by_time(
             query, limit=limit, cursor=cursor
         )
@@ -329,6 +338,7 @@ class UnitRepository:
         category: str | None,
         limit: int,
         cursor: str | None,
+        git_filters: GitFilters = GitFilters(),
     ) -> tuple[list[dict[str, Any]], str | None]:
         run_query = _trend_run_query(
             skill=skill,
@@ -336,6 +346,7 @@ class UnitRepository:
             stage=stage,
             target_environment=target_environment,
             category=category,
+            git_filters=git_filters,
         )
         runs, next_cursor = await self.runs.list_by_time(
             run_query, limit=limit, cursor=cursor
