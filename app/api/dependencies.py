@@ -3,6 +3,7 @@ from typing import Annotated, cast
 from fastapi import Depends, Request
 
 from app.config import Settings
+from app.models import GitFilters
 from app.repositories import E2ERepository, ProductUpdateRepository, UnitRepository
 from app.services.suggestion_images import SuggestionImageStore
 
@@ -27,6 +28,7 @@ def get_product_update_image_store(request: Request) -> SuggestionImageStore:
     return cast(SuggestionImageStore, request.app.state.product_update_image_store)
 
 
+GitFilterDependency = Annotated[GitFilters, Depends(GitFilters)]
 SettingsDependency = Annotated[Settings, Depends(get_settings_from_app)]
 UnitRepositoryDependency = Annotated[UnitRepository, Depends(get_unit_repository)]
 E2ERepositoryDependency = Annotated[E2ERepository, Depends(get_e2e_repository)]
