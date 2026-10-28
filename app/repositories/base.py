@@ -8,6 +8,19 @@ from pymongo import DESCENDING
 from pymongo.asynchronous.collection import AsyncCollection
 
 
+def apply_git_filters(
+    query: dict[str, Any],
+    github_repository: str | None,
+    git_ref: str | None,
+    git_sha: str | None,
+) -> None:
+    if github_repository:
+        query["github_repository"] = github_repository
+    if git_ref:
+        query["git_ref"] = git_ref
+    if git_sha:
+        query["git_sha"] = git_sha
+
 def normalize_document(value: Any) -> Any:
     if isinstance(value, ObjectId):
         return str(value)
