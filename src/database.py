@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
 
-from app.config import Settings
+from src.config import Settings
 
 
 @asynccontextmanager

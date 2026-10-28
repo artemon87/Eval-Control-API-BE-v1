@@ -3,8 +3,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.api.dependencies import GitFilterDependency, UnitRepositoryDependency
-from app.models import (
+from src.api.dependencies import GitFilterDependency, UnitRepositoryDependency
+from src.models import (
     Page,
     TrendPoint,
     UnitCase,
@@ -12,7 +12,7 @@ from app.models import (
     UnitRun,
     UnitVersionSummary,
 )
-from app.services import build_unit_comparison
+from src.services import build_unit_comparison
 
 router = APIRouter(prefix="/unit", tags=["unit evaluations"])
 Limit = Annotated[int, Query(ge=1, le=200)]

@@ -2,9 +2,9 @@ from typing import Any, cast
 
 import pytest
 
-from app.api.routes.unit import list_unit_runs
-from app.models import GitFilters
-from app.repositories.unit import UnitRepository
+from src.api.routes.unit import list_unit_runs
+from src.models import GitFilters
+from src.repositories.unit import UnitRepository
 
 
 class RouteRepository:

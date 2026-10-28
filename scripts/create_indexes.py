@@ -2,7 +2,7 @@ import asyncio
 
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, IndexModel
 
-from app.config import get_settings
+from src.config import get_settings
 
 
 async def main() -> None:

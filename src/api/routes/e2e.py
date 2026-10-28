@@ -2,8 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.api.dependencies import E2ERepositoryDependency
-from app.models import E2ECase, E2ERun, Page, TrendPoint
+from src.api.dependencies import E2ERepositoryDependency
+from src.models import E2ECase, E2ERun, Page, TrendPoint
 
 router = APIRouter(prefix="/e2e", tags=["E2E evaluations"])
 Limit = Annotated[int, Query(ge=1, le=200)]

@@ -7,7 +7,7 @@ from bson import ObjectId
 from pymongo import DESCENDING, ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 
-from app.config import Settings
+from src.config import Settings
 
 
 PRODUCT_UPDATE_NOT_FOUND = "Product update not found"

@@ -15,7 +15,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 python scripts/create_indexes.py
-uvicorn app.main:app --reload --port 8080
+uvicorn src.main:app --reload --port 8080
 ```
 
 Open `http://localhost:8080/docs`. Configure the frontend with:

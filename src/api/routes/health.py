@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
 
-from app.models import HealthResponse
+from src.models import HealthResponse
 
 router = APIRouter(tags=["health"])
 

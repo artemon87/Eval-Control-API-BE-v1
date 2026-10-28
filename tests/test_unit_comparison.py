@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from app.services import build_unit_comparison
+from src.services import build_unit_comparison
 
 
 def run(version: str, pass_rate: float, duration: float, run_id: str) -> dict[str, Any]:

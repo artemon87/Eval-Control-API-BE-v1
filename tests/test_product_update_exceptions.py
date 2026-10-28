@@ -3,8 +3,8 @@ from typing import cast
 import pytest
 from fastapi import Request
 
-from app.api.exception_handlers import product_update_not_found_handler
-from app.repositories.product_updates import (
+from src.api.exception_handlers import product_update_not_found_handler
+from src.repositories.product_updates import (
     ProductUpdateNotFoundError,
     ProductUpdateRepository,
 )

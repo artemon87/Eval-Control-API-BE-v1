@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from app.models.common import APIModel, BaseRun, MetricComparison, Verdict
+from src.models.common import APIModel, BaseRun, MetricComparison, Verdict
 
 
 class UnitConfig(APIModel):

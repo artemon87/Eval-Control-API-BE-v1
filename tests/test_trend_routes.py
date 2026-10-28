@@ -2,9 +2,9 @@ from typing import Any
 
 import pytest
 
-from app.api.routes.e2e import e2e_case_trend
-from app.api.routes.unit import unit_skill_trend
-from app.models import GitFilters
+from src.api.routes.e2e import e2e_case_trend
+from src.api.routes.unit import unit_skill_trend
+from src.models import GitFilters
 
 
 class TrendRepository:

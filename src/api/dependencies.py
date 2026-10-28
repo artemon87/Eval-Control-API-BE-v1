@@ -2,10 +2,10 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
-from app.config import Settings
-from app.models import GitFilters
-from app.repositories import E2ERepository, ProductUpdateRepository, UnitRepository
-from app.services.suggestion_images import SuggestionImageStore
+from src.config import Settings
+from src.models import GitFilters
+from src.repositories import E2ERepository, ProductUpdateRepository, UnitRepository
+from src.services.suggestion_images import SuggestionImageStore
 
 
 def get_settings_from_app(request: Request) -> Settings:
