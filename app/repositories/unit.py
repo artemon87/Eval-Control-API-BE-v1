@@ -180,6 +180,7 @@ def _build_trend_points(
         )
     return points
 
+
 class UnitRepository:
     def __init__(self, database: AsyncDatabase[dict[str, Any]], settings: Settings) -> None:
         self.runs = MongoRepository(database[settings.unit_runs_collection])
