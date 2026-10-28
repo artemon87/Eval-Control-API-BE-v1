@@ -4,6 +4,7 @@ import pytest
 
 from app.api.routes.e2e import e2e_case_trend
 from app.api.routes.unit import unit_skill_trend
+from app.repositories.base import GitFilters
 
 
 class TrendRepository:
@@ -52,9 +53,14 @@ async def test_e2e_case_trend_is_scoped_and_cursor_paginated() -> None:
 @pytest.mark.asyncio
 async def test_unit_skill_trend_is_scoped_and_cursor_paginated() -> None:
     repository = TrendRepository()
+    git_filters = GitFilters(
+        github_repository="ukg/eval-control",
+        git_ref="feature/grouping",
+    )
     page = await unit_skill_trend(
         "feedback-skill",
         repository,
+        git_filters,
         environment="staging",
         limit=25,
         cursor=None,
@@ -69,6 +75,7 @@ async def test_unit_skill_trend_is_scoped_and_cursor_paginated() -> None:
         "stage": None,
         "target_environment": None,
         "category": None,
+        "git_filters": git_filters,
         "limit": 25,
         "cursor": None,
     }

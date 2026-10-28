@@ -1,10 +1,11 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.dependencies import UnitRepositoryDependency
 from app.models import Page, TrendPoint, UnitCase, UnitComparison, UnitRun, UnitVersionSummary
+from app.repositories.base import GitFilters
 from app.services import build_unit_comparison
 
 router = APIRouter(prefix="/unit", tags=["unit evaluations"])
@@ -14,6 +15,7 @@ Limit = Annotated[int, Query(ge=1, le=200)]
 @router.get("/runs", response_model=Page[UnitRun])
 async def list_unit_runs(
     repository: UnitRepositoryDependency,
+    git_filters: Annotated[GitFilters, Depends()],
     skill: str | None = None,
     environment: str | None = None,
     stage: Annotated[list[str] | None, Query()] = None,
@@ -35,6 +37,7 @@ async def list_unit_runs(
             agent_name=agent_name,
             skill_version=skill_version,
             verdict=verdict,
+            git_filters=git_filters,
             limit=limit,
             cursor=cursor,
         )
@@ -72,6 +75,7 @@ async def list_unit_cases(
 async def unit_case_trend(
     case_id: str,
     repository: UnitRepositoryDependency,
+    git_filters: Annotated[GitFilters, Depends()],
     skill: str,
     environment: str | None = None,
     stage: str | None = None,
@@ -89,6 +93,7 @@ async def unit_case_trend(
             stage=stage,
             target_environment=target_environment,
             category=category,
+            git_filters=git_filters,
             limit=limit,
             cursor=cursor,
         )
@@ -101,6 +106,7 @@ async def unit_case_trend(
 async def unit_skill_trend(
     skill: str,
     repository: UnitRepositoryDependency,
+    git_filters: Annotated[GitFilters, Depends()],
     environment: str | None = None,
     stage: str | None = None,
     target_environment: str | None = None,
@@ -117,6 +123,7 @@ async def unit_skill_trend(
             stage=stage,
             target_environment=target_environment,
             category=category,
+            git_filters=git_filters,
             limit=limit,
             cursor=cursor,
         )
