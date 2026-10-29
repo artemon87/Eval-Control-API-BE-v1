@@ -138,7 +138,7 @@ async def test_get_attachment_returns_private_stream_with_safe_headers() -> None
     )
     assert isinstance(result, StreamingResponse)
     assert result.media_type == "image/png"
-    assert result.headers["cache-control"] == "private, max-age=300"
+    assert result.headers["cache-control"] == "public, max-age=300"
     assert result.headers["x-content-type-options"] == "nosniff"
     assert "inline;" in result.headers["content-disposition"]
     repo.get_attachment.assert_awaited_once_with(

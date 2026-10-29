@@ -207,6 +207,13 @@ async def test_list_sets_viewer_vote_state(voted: bool) -> None:
     assert vote_collection.last_find_query == {"suggestion_id": {"$in": [identifier]}, "user_id": "user:1"}
 
 
+async def test_list_anonymous_skips_vote_lookup() -> None:
+    repo, _, votes = _new_repo([_suggestion_doc()])
+    result = await repo.list(viewer=None, limit=10)
+    assert result[0]["viewer_has_voted"] is False
+    assert votes.last_find_query is None
+
+
 async def test_list_normalizes_object_id_to_string() -> None:
     repo, _, _ = _new_repo([_suggestion_doc()])
     result = await repo.list(viewer="user:1", limit=10)

@@ -19,7 +19,7 @@ class SuggestionRepository:
         self.suggestions = MongoRepository(database[settings.suggestions_collection])
         self.votes = MongoRepository(database[settings.suggestion_votes_collection])
 
-    async def list(self, *, viewer: str, limit: int) -> list[dict[str, Any]]:
+    async def list(self, *, viewer: str | None, limit: int) -> list[dict[str, Any]]:
         effective_limit = min(limit, 100)
         cursor = (
             self.suggestions.collection.find({})
@@ -35,15 +35,17 @@ class SuggestionRepository:
         if not documents:
             return []
 
-        suggestion_ids = [document["_id"] for document in documents]
-        vote_cursor = self.votes.collection.find(
-            {
-                "suggestion_id": {"$in": suggestion_ids},
-                "user_id": viewer,
-            }
-        )
-        votes = await vote_cursor.to_list(length=len(suggestion_ids))
-        voted_ids = {vote["suggestion_id"] for vote in votes}
+        voted_ids: set[ObjectId] = set()
+        if viewer is not None:
+            suggestion_ids = [document["_id"] for document in documents]
+            vote_cursor = self.votes.collection.find(
+                {
+                    "suggestion_id": {"$in": suggestion_ids},
+                    "user_id": viewer,
+                }
+            )
+            votes = await vote_cursor.to_list(length=len(suggestion_ids))
+            voted_ids = {vote["suggestion_id"] for vote in votes}
         return [
             self._serialize(
                 document,

@@ -10,6 +10,7 @@ from starlette.responses import StreamingResponse
 from src.api.dependencies import (
     AuthorizationServiceDependency,
     CurrentUserDependency,
+    OptionalUserDependency,
     SuggestionImageStoreDependency,
     SuggestionRepositoryDependency,
 )
@@ -19,7 +20,6 @@ from src.models.suggestions import (
     SuggestionResponse,
     SuggestionStatusUpdate,
 )
-from src.security.auth import get_authenticated_user
 
 from src.models.authorization import Permission
 from src.security.authorization_identity import (
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
 
 
 def current_user(
-    user: Annotated[CurrentUser, Depends(get_authenticated_user)],
+    user: CurrentUserDependency,
 ) -> str:
     identity = user.object_id or user.subject or user.email
     if not identity:
@@ -45,10 +45,21 @@ def current_user(
 
 Viewer = Annotated[str, Depends(current_user)]
 
+def optional_viewer(
+    user: OptionalUserDependency,
+) -> str | None:
+    if not user.authenticated:
+        return None
+
+    return current_user(user)
+
+
+OptionalViewer = Annotated[str | None, Depends(optional_viewer)]
+
 
 @router.get("")
 async def list_suggestions(
-    viewer: Viewer,
+    viewer: OptionalViewer,
     repository: SuggestionRepositoryDependency,
     limit: int = 100,
 ) -> SuggestionListResponse:
@@ -64,7 +75,7 @@ async def list_suggestions(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_suggestion(
-    user: AuthenticatedUser,
+    user: CurrentUserDependency,
     viewer: Viewer,
     repository: SuggestionRepositoryDependency,
     image_store: SuggestionImageStoreDependency,
@@ -101,7 +112,7 @@ async def create_suggestion(
 async def get_suggestion_attachment(
     suggestion_id: str,
     attachment_id: str,
-    _viewer: Viewer,
+    _viewer: OptionalViewer,
     repository: SuggestionRepositoryDependency,
     image_store: SuggestionImageStoreDependency,
 ) -> StreamingResponse:
