@@ -24,6 +24,12 @@ class TimeWindow(BaseModel):
     started_before: datetime | None = None
 
 
+class GroupingFilters(BaseModel):
+    category: str | None = None
+    target_environment: str | None = None
+    stage: list[str] | None = None
+
+
 Verdict = Literal["passed", "failed", "blocked", "pending", "error", "xpassed"]
 
 

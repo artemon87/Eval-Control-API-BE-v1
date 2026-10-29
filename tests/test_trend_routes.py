@@ -4,7 +4,7 @@ import pytest
 
 from src.api.routes.e2e import e2e_case_trend
 from src.api.routes.unit import unit_skill_trend
-from src.models import GitFilters
+from src.models import GitFilters, GroupingFilters
 
 
 class TrendRepository:
@@ -61,6 +61,7 @@ async def test_unit_skill_trend_is_scoped_and_cursor_paginated() -> None:
         "feedback-skill",
         repository,
         git_filters,
+        GroupingFilters(),
         environment="staging",
         limit=25,
         cursor=None,
@@ -72,9 +73,7 @@ async def test_unit_skill_trend_is_scoped_and_cursor_paginated() -> None:
         "skill": "feedback-skill",
         "case_id": None,
         "environment": "staging",
-        "stage": None,
-        "target_environment": None,
-        "category": None,
+        "grouping_filters": GroupingFilters(),
         "git_filters": git_filters,
         "limit": 25,
         "cursor": None,

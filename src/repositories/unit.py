@@ -4,9 +4,34 @@ from pymongo import DESCENDING
 from pymongo.asynchronous.database import AsyncDatabase
 
 from src.config import Settings
-from src.models import GitFilters, TimeWindow
+from src.models import GitFilters, GroupingFilters, TimeWindow
 from src.repositories.base import MongoRepository, apply_git_filters, normalize_document
 from src.repositories.time_window import apply_started_at_window
+
+GROUP_OPERATOR = "$group"
+TARGET_ENVIRONMENT_FIELD = "unit_config.target_environment"
+STAGE_FIELD = "unit_config.stage"
+ENVIRONMENT_FIELD = "environment"
+CATEGORY_FIELD = "unit_config.category"
+SKILL_VERSION_FIELD = "unit_config.skill_version"
+AGENT_NAME_FIELD = "unit_config.agent_name"
+
+
+def _apply_grouping_filters(
+    query: dict[str, Any], grouping_filters: GroupingFilters | None
+) -> None:
+    if grouping_filters is None:
+        return
+    if grouping_filters.category:
+        query[CATEGORY_FIELD] = grouping_filters.category
+    if grouping_filters.target_environment:
+        query[TARGET_ENVIRONMENT_FIELD] = grouping_filters.target_environment
+    if grouping_filters.stage:
+        query[STAGE_FIELD] = (
+            grouping_filters.stage[0]
+            if len(grouping_filters.stage) == 1
+            else {"$in": grouping_filters.stage}
+        )
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:
@@ -54,7 +79,7 @@ class UnitRepository:
             },
             {"$unwind": "$scores"},
             {
-                "$group": {
+                GROUP_OPERATOR: {
                     "_id": {
                         "run_id": "$run_id",
                         "metric": "$scores.k",
@@ -65,7 +90,7 @@ class UnitRepository:
                 }
             },
             {
-                "$group": {
+                GROUP_OPERATOR: {
                     "_id": "$_id.run_id",
                     "score_total": {"$sum": "$score_total"},
                     "score_count": {"$sum": "$score_count"},
@@ -116,9 +141,7 @@ class UnitRepository:
         *,
         skill: str | None,
         environment: str | None,
-        stage: list[str] | None,
-        target_environment: str | None,
-        category: str | None,
+        grouping_filters: GroupingFilters | None,
         agent_name: str | None,
         skill_version: str | None,
         verdict: str | None,
@@ -131,19 +154,12 @@ class UnitRepository:
         if skill:
             query["skill"] = skill
         if environment:
-            query["environment"] = environment
-        if stage:
-            query["unit_config.stage"] = (
-                stage[0] if len(stage) == 1 else {"$in": stage}
-            )
-        if target_environment:
-            query["unit_config.target_environment"] = target_environment
-        if category:
-            query["unit_config.category"] = category
+            query[ENVIRONMENT_FIELD] = environment
+        _apply_grouping_filters(query, grouping_filters)
         if agent_name:
-            query["unit_config.agent_name"] = agent_name
+            query[AGENT_NAME_FIELD] = agent_name
         if skill_version:
-            query["unit_config.skill_version"] = skill_version
+            query[SKILL_VERSION_FIELD] = skill_version
         if verdict:
             query["verdict"] = verdict
         if git_filters is not None:
@@ -185,9 +201,7 @@ class UnitRepository:
         skill: str,
         case_id: str | None,
         environment: str | None,
-        stage: str | None,
-        target_environment: str | None,
-        category: str | None,
+        grouping_filters: GroupingFilters | None,
         limit: int,
         cursor: str | None,
         git_filters: GitFilters | None = None,
@@ -199,13 +213,8 @@ class UnitRepository:
             "started_at": {"$ne": None},
         }
         if environment:
-            run_query["environment"] = environment
-        if stage:
-            run_query["unit_config.stage"] = stage
-        if target_environment:
-            run_query["unit_config.target_environment"] = target_environment
-        if category:
-            run_query["unit_config.category"] = category
+            run_query[ENVIRONMENT_FIELD] = environment
+        _apply_grouping_filters(run_query, grouping_filters)
         if git_filters is not None:
             apply_git_filters(
                 run_query,
@@ -277,15 +286,15 @@ class UnitRepository:
             "execution_status": "completed",
         }
         if environment:
-            match["environment"] = environment
+            match[ENVIRONMENT_FIELD] = environment
         if stage:
-            match["unit_config.stage"] = stage
+            match[STAGE_FIELD] = stage
         if target_environment:
-            match["unit_config.target_environment"] = target_environment
+            match[TARGET_ENVIRONMENT_FIELD] = target_environment
         pipeline: list[dict[str, Any]] = [
             {"$match": match},
             {"$sort": {"started_at": -1, "_id": -1}},
-            {"$group": {"_id": "$unit_config.skill_version", "run": {"$first": "$$ROOT"}}},
+            {GROUP_OPERATOR: {"_id": f"${SKILL_VERSION_FIELD}", "run": {"$first": "$$ROOT"}}},
             {"$sort": {"run.started_at": -1, "run._id": -1}},
             {"$limit": limit},
             {"$replaceRoot": {"newRoot": "$run"}},
@@ -305,15 +314,15 @@ class UnitRepository:
         query: dict[str, Any] = {
             "eval_type": "unit",
             "skill": skill,
-            "unit_config.skill_version": version,
+            SKILL_VERSION_FIELD: version,
             "execution_status": "completed",
         }
         if environment:
-            query["environment"] = environment
+            query[ENVIRONMENT_FIELD] = environment
         if stage:
-            query["unit_config.stage"] = stage
+            query[STAGE_FIELD] = stage
         if target_environment:
-            query["unit_config.target_environment"] = target_environment
+            query[TARGET_ENVIRONMENT_FIELD] = target_environment
         document = await self.runs.collection.find_one(
             query, sort=[("started_at", DESCENDING), ("_id", DESCENDING)]
         )
