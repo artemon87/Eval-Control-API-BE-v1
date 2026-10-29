@@ -27,7 +27,11 @@ def _apply_grouping_filters(
     if grouping_filters.target_environment:
         query[TARGET_ENVIRONMENT_FIELD] = grouping_filters.target_environment
     if grouping_filters.stage:
-        query[STAGE_FIELD] = grouping_filters.stage
+        query[STAGE_FIELD] = (
+            grouping_filters.stage[0]
+            if len(grouping_filters.stage) == 1
+            else {"$in": grouping_filters.stage}
+        )
 
 
 def _case_verdict(cases: list[dict[str, Any]]) -> str:
