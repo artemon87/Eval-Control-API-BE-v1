@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
+from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -27,7 +28,7 @@ class TimeWindow(BaseModel):
 class GroupingFilters(BaseModel):
     category: str | None = None
     target_environment: str | None = None
-    stage: str | None = None
+    stage: Annotated[list[str] | None, Query()] = None
 
 
 Verdict = Literal["passed", "failed", "blocked", "pending", "error", "xpassed"]
