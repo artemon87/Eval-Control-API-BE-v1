@@ -19,7 +19,7 @@ from src.models.suggestions import (
     SuggestionResponse,
     SuggestionStatusUpdate,
 )
-from src.security.auth import get_authenticated_user
+from src.security.auth import get_authenticated_user, get_optional_user
 
 from src.models.authorization import Permission
 from src.security.authorization_identity import (
@@ -44,6 +44,19 @@ def current_user(
 
 
 Viewer = Annotated[str, Depends(current_user)]
+AuthenticatedUser = Annotated[CurrentUser, Depends(get_authenticated_user)]
+
+
+def optional_viewer(
+    user: Annotated[CurrentUser, Depends(get_optional_user)],
+) -> str | None:
+    if not user.authenticated:
+        return None
+
+    return current_user(user)
+
+
+OptionalViewer = Annotated[str | None, Depends(optional_viewer)]
 
 
 @router.get("")
@@ -121,7 +134,7 @@ async def get_suggestion_attachment(
         image_store.iter_download(str(attachment["object_name"])),
         media_type=str(attachment["content_type"]),
         headers={
-            "Cache-Control": "private, max-age=300",
+            "Cache-Control": "public, max-age=300",
             "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
             "X-Content-Type-Options": "nosniff",
         },
