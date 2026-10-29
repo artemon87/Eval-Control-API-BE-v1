@@ -1,5 +1,6 @@
 from src.models.common import (
     GitFilters,
+    GroupingFilters,
     HealthResponse,
     MetricComparison,
     Page,
@@ -13,6 +14,7 @@ __all__ = [
     "E2ECase",
     "E2ERun",
     "GitFilters",
+    "GroupingFilters",
     "HealthResponse",
     "MetricComparison",
     "Page",

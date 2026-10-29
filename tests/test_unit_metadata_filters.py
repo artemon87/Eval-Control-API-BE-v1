@@ -2,9 +2,12 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
-from src.api.routes.unit import list_unit_runs
-from src.models import GitFilters, TimeWindow
+from src.api.dependencies import get_unit_repository
+from src.api.routes.unit import list_unit_runs, router
+from src.models import GitFilters, GroupingFilters, TimeWindow
 from src.repositories.unit import UnitRepository
 
 
@@ -100,11 +103,13 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
     page = await list_unit_runs(
         cast(UnitRepository, repository),
         git_filters,
+        GroupingFilters(
+            category="domain-skills",
+            target_environment="us-east4-prod-sales",
+            stage=["5-prod-sales"],
+        ),
         time_window,
         environment="staging",
-        stage=["5-prod-sales"],
-        target_environment="us-east4-prod-sales",
-        category="domain-skills",
         agent_name="oneview-agent",
         limit=25,
     )
@@ -114,9 +119,11 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
     assert repository.request == {
         "skill": None,
         "environment": "staging",
-        "stage": ["5-prod-sales"],
-        "target_environment": "us-east4-prod-sales",
-        "category": "domain-skills",
+        "grouping_filters": GroupingFilters(
+            category="domain-skills",
+            target_environment="us-east4-prod-sales",
+            stage=["5-prod-sales"],
+        ),
         "agent_name": "oneview-agent",
         "skill_version": None,
         "verdict": None,
@@ -128,6 +135,33 @@ async def test_unit_run_route_forwards_configuration_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_unit_run_route_accepts_multiple_stage_query_values() -> None:
+    repository = RouteRepository()
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_unit_repository] = lambda: repository
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/unit/runs",
+            params=[
+                ("stage", "1-dev-staging"),
+                ("stage", "2-dev-preprod"),
+                ("category", "domain-skills"),
+            ],
+        )
+
+    assert response.status_code == 200
+    assert repository.request is not None
+    assert repository.request["grouping_filters"] == GroupingFilters(
+        category="domain-skills",
+        stage=["1-dev-staging", "2-dev-preprod"],
+    )
+
+
+@pytest.mark.asyncio
 async def test_unit_repository_filters_nested_configuration_fields() -> None:
     repository = UnitRepository.__new__(UnitRepository)
     runs = RunsCollection()
@@ -136,9 +170,11 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
     await repository.list_runs(
         skill=None,
         environment="staging",
-        stage=["5-prod-sales", "4-prod"],
-        target_environment="us-east4-prod-sales",
-        category="domain-skills",
+        grouping_filters=GroupingFilters(
+            category="domain-skills",
+            target_environment="us-east4-prod-sales",
+            stage=["5-prod-sales"],
+        ),
         agent_name="oneview-agent",
         skill_version=None,
         verdict=None,
@@ -158,7 +194,7 @@ async def test_unit_repository_filters_nested_configuration_fields() -> None:
     assert runs.query == {
         "eval_type": "unit",
         "environment": "staging",
-        "unit_config.stage": {"$in": ["5-prod-sales", "4-prod"]},
+        "unit_config.stage": "5-prod-sales",
         "unit_config.target_environment": "us-east4-prod-sales",
         "unit_config.category": "domain-skills",
         "unit_config.agent_name": "oneview-agent",
