@@ -119,6 +119,7 @@ class UnitRepository:
                 {
                     str(metric): float(score)
                     for metric, score in item.get("mean_scores", {}).items()
+                    if score is not None  # Metric has no numeric scores in this run.
                 },
             )
             for item in aggregates
