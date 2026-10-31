@@ -58,3 +58,12 @@ repository recorded by the producer; the service does not fetch Git ancestry, PR
 or commit authorship. Matching case identities and recorded thresholds do not guarantee
 identical prompt/test content; strict content equivalence would require a persisted test
 snapshot fingerprint from the producer.
+
+## Performance trend
+
+History run metadata also carries `caseSetKey`, a stable fingerprint of the complete recorded
+case identities and metric/threshold definitions for that execution. It is absent for
+incomplete case records. The frontend uses it to break trend lines when the evaluated test
+set changes, including same-size replacements; it does not infer equivalence from case count.
+The trend plots observed pass rate or execution duration as separate branch series within the
+selected UTC window and analysis configuration. Missing metrics are not plotted as zero.

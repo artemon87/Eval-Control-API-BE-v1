@@ -373,3 +373,21 @@ def test_different_subsets_at_the_same_sha_do_not_create_a_repeat_disagreement()
     last, lc = execution("b", 21, "main", "same", [0, 1, 4, 5], covered=[0, 1, 4, 5])
     result = build_history_insights(SCOPE, WINDOW, [first, last], fc + lc)
     assert result.signals.inconsistent_updates == 0
+
+
+def test_trend_case_set_identity_changes_even_when_case_count_and_cohort_match() -> None:
+    first, fc = execution("a", 20, "main", "one", list(range(7)))
+    same, sc = execution("b", 21, "main", "two", list(range(7)))
+    changed, cc = execution("c", 22, "main", "three", list(range(7)))
+    cc[0]["_id"]["name"] = "replacement-case"
+    incomplete, ic = execution("d", 23, "main", "four", list(range(7)))
+    result = build_history_insights(
+        SCOPE, WINDOW, [first, same, changed, incomplete], fc + list(reversed(sc)) + cc + ic[:3]
+    )
+    by_id = {run.run_id: run for run in result.runs}
+    assert by_id["a"].case_set_key == by_id["b"].case_set_key
+    assert by_id["a"].case_set_key != by_id["c"].case_set_key
+    assert by_id["a"].cohort_key == by_id["c"].cohort_key
+    assert by_id["a"].case_count == by_id["c"].case_count
+    assert by_id["d"].case_set_key is None
+    assert "caseSetKey" in by_id["a"].model_dump(by_alias=True)

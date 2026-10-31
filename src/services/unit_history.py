@@ -209,6 +209,7 @@ def _prepare_runs(
             and run.cases
         )
         if model.cases_complete:
+            model.case_set_key = _digest(run.definitions)
             # A subset still supplies evidence for its executed cases. Cohorts match
             # runtime/evaluator settings and threshold profiles, not case-set size.
             model.cohort_key = _digest([config, sorted(set(run.definitions.values()))])

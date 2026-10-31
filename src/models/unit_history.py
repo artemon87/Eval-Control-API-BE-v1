@@ -36,6 +36,7 @@ class HistoryRun(HistoryModel):
     case_count: int
     cases_complete: bool
     cohort_key: str | None
+    case_set_key: str | None = None
     context_match: bool = False
 
 
