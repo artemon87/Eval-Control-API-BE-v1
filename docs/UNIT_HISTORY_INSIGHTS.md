@@ -1,4 +1,4 @@
-# Unit History insights
+# Unit History data and Trend Explorer
 
 The unit History page is scoped to one skill/repository, stage, target, execution environment,
 and fixed half-open UTC window. It summarizes observed branch evolution and case patterns;
@@ -89,8 +89,8 @@ is never represented as PR approval. Missing thresholds remain missing.
 records across the full selected window, including non-completed runs. The compact case
 query retains one recorded error message per run/case/type group (up to 4096 characters;
 conflicting messages are not a complete event log). Messages are evidence, not inferred
-root causes or automatically classified infrastructure incidents. The frontend paginates
-these records independently of case-pattern configuration.
+root causes or automatically classified infrastructure incidents. These records remain available in the API for a separately supplied Insights view;
+Trend Explorer does not render a global execution-issue list.
 
 Detailed case investigation uses the existing authenticated paginated
 `GET /unit/runs/{run_id}/cases` endpoint on demand for one selected execution. It matches
@@ -98,5 +98,30 @@ both recorded case identity and test type, preserves separate records, displays 
 scores, thresholds and explanations, and exposes stored expected/actual response,
 validation and tool-call evidence. Absent fields remain "Not recorded". Changing execution
 cancels the previous request; old evidence cannot replace a new or missing result.
-Global case summaries stay independent of branch-column paging/search. Supporting history
-remains collapsible and paginated with whole-row run navigation. E2E History is unchanged.
+Supporting history remains collapsible and paginated with whole-row run navigation.
+E2E History is unchanged.
+
+
+## Finalized Trend Explorer frontend
+
+History retains its navigation entry and exposes Trend Explorer alongside a disabled
+Insights integration tab. A separately supplied Insights component can enable that tab;
+Trend Explorer does not implement category-wide insights, severity cards, or branch matrices.
+The existing aggregation response retains its broader fields for that future consumer.
+
+For a selected skill/repository, stage, and target, Trend Explorer defaults to a fixed
+30-day UTC window and also supports 7 and 90 days. A chart point selects an execution
+in place. Cards show measured case/pass/fail counts and pass rate; unmeasured executions
+show unavailable quality values with recorded issues rather than artificial zero scores.
+
+Test changes default to the preceding comparable execution in the same branch in repository
+ordering, including timestamp ties. Users may explicitly choose another reference. There
+is no automatic cross-branch baseline or Git ancestry inference. A comparison requires
+complete configuration and matching case-set fingerprints; on-demand raw case evidence
+must additionally be complete, unique, final, agree with summaries, and match identities,
+metric names, and thresholds. A reference load failure leaves selected records visible
+and disables inferred changes. Cancellation and request identity guards reject stale data.
+
+Test changes and supporting history are paginated. Clicking a test shows stored metric
+and response evidence; selecting execution metadata or a supporting row opens that run.
+Trend connections describe observed executions, not causal effects of branch changes.
