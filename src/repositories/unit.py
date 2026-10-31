@@ -142,6 +142,7 @@ class UnitRepository:
                 {
                     str(metric): float(score)
                     for metric, score in item.get("mean_scores", {}).items()
+                    if score is not None
                 },
             )
             for item in aggregates
@@ -358,4 +359,5 @@ class UnitRepository:
             length=None
         )
         return [normalize_document(document) for document in documents]
+
 
