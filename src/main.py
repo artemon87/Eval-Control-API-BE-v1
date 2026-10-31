@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.exception_handlers import product_update_not_found_handler
-from src.api.routes import e2e, health, product_updates, unit
+from src.api.routes import analytics, e2e, health, product_updates, unit
 from src.config import Settings, get_settings
 from src.database import database_lifespan
 from src.middleware import AuthenticationPlaceholderMiddleware, RequestContextMiddleware
@@ -68,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Accept", "Authorization", "Content-Type", "X-Request-ID"],
         expose_headers=["X-Request-ID", "Server-Timing"],
     )
+    app.include_router(analytics.router, prefix=active_settings.api_prefix)
     app.include_router(health.router)
     app.include_router(unit.router, prefix=active_settings.api_prefix)
     app.include_router(e2e.router, prefix=active_settings.api_prefix)
@@ -76,3 +77,4 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 app = create_app()
+
