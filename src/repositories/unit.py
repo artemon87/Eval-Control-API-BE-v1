@@ -54,6 +54,19 @@ class UnitRepository:
         self.runs = MongoRepository(database[settings.unit_runs_collection])
         self.cases = MongoRepository(database[settings.unit_cases_collection])
 
+    async def list_skills(self) -> list[dict[str, Any]]:
+        """Catalog every recorded skill/repository, independent of run-list paging."""
+        cursor = await self.runs.collection.aggregate([
+            {"$match": {"eval_type": "unit", "skill": {"$type": "string", "$ne": ""}}},
+            {GROUP_OPERATOR: {"_id": {
+                "skill": "$skill",
+                "github_repository": {"$ifNull": ["$github_repository", None]},
+            }}},
+            {"$replaceRoot": {"newRoot": "$_id"}},
+            {"$sort": {"skill": 1, "github_repository": 1}},
+        ])
+        return await cursor.to_list(length=None)
+
     async def _with_mean_scores(
         self, runs: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -335,3 +348,4 @@ class UnitRepository:
             length=None
         )
         return [normalize_document(document) for document in documents]
+

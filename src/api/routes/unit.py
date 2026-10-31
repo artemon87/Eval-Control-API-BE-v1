@@ -17,10 +17,16 @@ from src.models import (
     UnitRun,
     UnitVersionSummary,
 )
+from src.models.unit import UnitSkillOption
 from src.services import build_unit_comparison
 
 router = APIRouter(prefix="/unit", tags=["unit evaluations"])
 Limit = Annotated[int, Query(ge=1, le=200)]
+
+
+@router.get("/skills", response_model=list[UnitSkillOption])
+async def list_unit_skills(repository: UnitRepositoryDependency) -> list[UnitSkillOption]:
+    return [UnitSkillOption.model_validate(item) for item in await repository.list_skills()]
 
 
 @router.get("/runs", response_model=Page[UnitRun])
@@ -185,3 +191,4 @@ async def compare_skill_versions(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
