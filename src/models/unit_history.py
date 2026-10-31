@@ -38,6 +38,19 @@ class HistoryRun(HistoryModel):
     cohort_key: str | None
     case_set_key: str | None = None
     context_match: bool = False
+    quality_measured: bool = False
+    blocked_cases: int = 0
+    pass_rate_threshold: float | None = None
+    error: str | None = None
+
+
+class HistoryIssue(HistoryModel):
+    run_id: str
+    branch_key: str
+    started_at: datetime
+    case_name: str | None = None
+    test_type: str | None = None
+    error: str | None = None
 
 
 class HistoryCommit(HistoryModel):
@@ -133,3 +146,4 @@ class UnitHistoryInsights(HistoryModel):
     branches: list[HistoryBranch]
     cases: list[HistoryCase]
     signals: HistorySignals
+    execution_issues: list[HistoryIssue] = Field(default_factory=list)

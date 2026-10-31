@@ -67,3 +67,36 @@ incomplete case records. The frontend uses it to break trend lines when the eval
 set changes, including same-size replacements; it does not infer equivalence from case count.
 The trend plots observed pass rate or execution duration as separate branch series within the
 selected UTC window and analysis configuration. Missing metrics are not plotted as zero.
+
+## Branch execution investigation
+
+History uses branch, commit (eight-character display), actor, and execution time. It does
+not require PR numbers, PR descriptions, approval state, or a main-branch baseline.
+Observed branch direction is within-branch evidence, not a causal claim about a merge.
+
+`qualityMeasured` requires a completed run, a non-operational run verdict, complete and
+unambiguous unique case evidence, final passed/failed case verdicts, and agreement between
+the recorded passed summary and case verdicts. Blocked, skipped, pending, XPASS, missing,
+or inconsistent evidence is not plotted as zero quality. A valid intentional subset may
+still have its own measured result; case-set fingerprints prevent joining it into an
+apparent improvement over a larger suite. Missing analysis configuration prevents chart
+lines and conclusive branch direction. Raw summaries remain available for inspection.
+
+`passRateThreshold` normalizes a recorded ratio or percentage to percent. A threshold result
+is never represented as PR approval. Missing thresholds remain missing.
+
+`executionIssues` includes run-level operational issues and grouped blocked/error case
+records across the full selected window, including non-completed runs. The compact case
+query retains one recorded error message per run/case/type group (up to 4096 characters;
+conflicting messages are not a complete event log). Messages are evidence, not inferred
+root causes or automatically classified infrastructure incidents. The frontend paginates
+these records independently of case-pattern configuration.
+
+Detailed case investigation uses the existing authenticated paginated
+`GET /unit/runs/{run_id}/cases` endpoint on demand for one selected execution. It matches
+both recorded case identity and test type, preserves separate records, displays actual
+scores, thresholds and explanations, and exposes stored expected/actual response,
+validation and tool-call evidence. Absent fields remain "Not recorded". Changing execution
+cancels the previous request; old evidence cannot replace a new or missing result.
+Global case summaries stay independent of branch-column paging/search. Supporting history
+remains collapsible and paginated with whole-row run navigation. E2E History is unchanged.

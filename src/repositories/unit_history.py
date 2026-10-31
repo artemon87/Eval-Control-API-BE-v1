@@ -150,13 +150,14 @@ async def load_history_inputs(
             "trigger",
             "duration_ms",
             "environment",
+            "error",
         ],
         1,
     )
     cursor = runs_collection.find(history_run_query(scope, window), projection)
     documents = await cursor.sort([("started_at", 1), ("_id", 1)]).to_list(length=None)
     runs = [normalize_document(document) for document in documents]
-    run_ids = [run["run_id"] for run in runs if run.get("execution_status") == "completed"]
+    run_ids = [run["run_id"] for run in runs]
     observations: list[dict[str, Any]] = []
     # Aggregate only identity, verdict, and comparison metadata, never prompts or tool traces.
     # Chunk IDs to keep queries below BSON limits without truncating the selected window.
@@ -174,6 +175,7 @@ async def load_history_inputs(
                     "run_id": 1,
                     "name": _trimmed("test_name", _trimmed("case_id")),
                     "test_type": _trimmed("test_type"),
+                    "error": {"$substrCP": [_trimmed("error", ""), 0, 4096]},
                     "verdict": {
                         "$cond": [
                             {"$eq": [{"$type": "$verdict"}, "string"]},
@@ -213,6 +215,7 @@ async def load_history_inputs(
                     "verdicts": {"$addToSet": "$verdict"},
                     "definitions": {"$addToSet": "$definition"},
                     "records": {"$sum": 1},
+                    "error": {"$max": "$error"},
                 }
             },
         ]

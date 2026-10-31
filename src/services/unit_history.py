@@ -14,6 +14,7 @@ from src.models.unit_history import (
     HistoryCaseCell,
     HistoryCohort,
     HistoryCommit,
+    HistoryIssue,
     HistoryRun,
     HistorySignals,
     UnitHistoryInsights,
@@ -82,6 +83,7 @@ class _Case:
     test_type: str | None
     verdict: CaseState
     definition: str
+    error: str | None = None
 
 
 @dataclass
@@ -169,6 +171,8 @@ def _prepare_runs(
             case_count=0,
             cases_complete=False,
             cohort_key=None,
+            error=(_text(raw.get("error")) or "")[:4096] or None,
+            pass_rate_threshold=_number(config_raw.get("pass_rate_threshold")),
         )
         run = _Run(model=model, config=config, complete_config=complete_config)
         identity_complete = True
@@ -199,6 +203,7 @@ def _prepare_runs(
                 test_type=test_type,
                 verdict=_verdict(item.get("verdicts", [])),
                 definition=_json(sorted(set(definitions))),
+                error=(_text(item.get("error")) or "")[:4096] or None,
             )
         model.case_count = len(run.cases)
         model.cases_complete = bool(
@@ -213,6 +218,19 @@ def _prepare_runs(
             # A subset still supplies evidence for its executed cases. Cohorts match
             # runtime/evaluator settings and threshold profiles, not case-set size.
             model.cohort_key = _digest([config, sorted(set(run.definitions.values()))])
+        model.blocked_cases = sum(case.verdict == "blocked" for case in run.cases.values())
+        model.quality_measured = bool(
+            model.cases_complete
+            and model.verdict not in {"blocked", "error"}
+            and len(run.cases) == total
+            and all(case.verdict in {"passed", "failed"} for case in run.cases.values())
+            and passed == sum(case.verdict == "passed" for case in run.cases.values())
+        )
+        if model.pass_rate_threshold is not None:
+            if 0 <= model.pass_rate_threshold <= 1:
+                model.pass_rate_threshold *= 100
+            elif not 0 <= model.pass_rate_threshold <= 100:
+                model.pass_rate_threshold = None
         result.append(run)
     # Keep the repository's _id ordering when executions have identical timestamps.
     return sorted(result, key=lambda run: run.model.started_at)
@@ -309,7 +327,7 @@ def _commits(runs: list[_Run]) -> list[HistoryCommit]:
         rates = [
             run.model.pass_rate_pct
             for run in group
-            if run.model.execution_status == "completed" and run.model.pass_rate_pct is not None
+            if run.model.quality_measured and run.model.pass_rate_pct is not None
         ]
         result.append(
             HistoryCommit(
@@ -333,7 +351,7 @@ def _branches(
         groups[run.model.branch_key].append(run)
     result = []
     for key, group in groups.items():
-        completed = [run for run in group if run.model.cases_complete]
+        completed = [run for run in group if run.model.quality_measured]
         first = completed[0] if completed else None
         latest = group[-1]
         last = completed[-1] if completed else None
@@ -432,7 +450,12 @@ def _cases(
             failures.extend(failed)
             latest = by_branch[branch.key][-1]
             state: CaseState = "unavailable"
-            if latest.model.cases_complete:
+            if latest.model.execution_status in {"error", "blocked"} or latest.model.verdict in {
+                "error",
+                "blocked",
+            }:
+                state = "blocked"
+            elif latest.model.cases_complete:
                 state = latest.cases[key].verdict if key in latest.cases else "not_run"
             cells.append(
                 HistoryCaseCell(
@@ -471,6 +494,36 @@ def _cases(
             )
         )
     return sorted(result, key=lambda case: (-case.failed, case.label, case.test_type or ""))
+
+
+def _execution_issues(runs: list[_Run]) -> list[HistoryIssue]:
+    issues: list[HistoryIssue] = []
+    for run in reversed(runs):
+        cases = [case for case in run.cases.values() if case.verdict == "blocked"]
+        for case in cases:
+            issues.append(
+                HistoryIssue(
+                    run_id=run.model.run_id,
+                    branch_key=run.model.branch_key,
+                    started_at=run.model.started_at,
+                    case_name=case.label,
+                    test_type=case.test_type,
+                    error=case.error or run.model.error,
+                )
+            )
+        if not cases and (
+            run.model.execution_status in {"blocked", "error"}
+            or run.model.verdict in {"blocked", "error"}
+        ):
+            issues.append(
+                HistoryIssue(
+                    run_id=run.model.run_id,
+                    branch_key=run.model.branch_key,
+                    started_at=run.model.started_at,
+                    error=run.model.error,
+                )
+            )
+    return issues
 
 
 def build_history_insights(
@@ -513,7 +566,12 @@ def build_history_insights(
             run.model.execution_status == "completed" and not run.model.cases_complete
             for run in runs
         ),
-        operational_runs=sum(run.model.execution_status in {"blocked", "error"} for run in runs),
+        operational_runs=sum(
+            run.model.execution_status in {"blocked", "error"}
+            or run.model.verdict in {"blocked", "error"}
+            or run.model.blocked_cases > 0
+            for run in runs
+        ),
     )
     return UnitHistoryInsights(
         scope=scope,
@@ -525,4 +583,5 @@ def build_history_insights(
         branches=branches,
         cases=cases,
         signals=signals,
+        execution_issues=_execution_issues(runs),
     )

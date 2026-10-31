@@ -193,10 +193,10 @@ def test_blocked_skipped_pending_and_xpass_are_not_counted_as_test_failures() ->
     error, _ = execution("infra", 21, "main", "second", [], status="error")
     result = build_history_insights(SCOPE, WINDOW, [raw, error], cases)
     assert result.signals.recurring_case_key is None
-    assert result.signals.operational_runs == 1
+    assert result.signals.operational_runs == 2
     assert len(result.runs) == 2
     assert all(case.failed == 0 for case in result.cases)
-    assert all(cell.latest_state == "unavailable" for case in result.cases for cell in case.cells)
+    assert all(cell.latest_state == "blocked" for case in result.cases for cell in case.cells)
     assert sum(cell.blocked for case in result.cases for cell in case.cells) == 1
     assert sum(cell.xpassed for case in result.cases for cell in case.cells) == 1
 
@@ -292,6 +292,7 @@ async def test_catalog_exhausts_scope_results_without_time_or_completion_limits(
 @pytest.mark.asyncio
 async def test_repository_batches_case_aggregation_without_truncating_or_loading_traces() -> None:
     rows = [execution(f"r-{i}", 20, "main", "sha", [], covered=[])[0] for i in range(1001)]
+    rows[-1]["execution_status"] = "error"
     cursor = MagicMock()
     cursor.sort.return_value = cursor
     cursor.to_list = AsyncMock(return_value=rows)
@@ -391,3 +392,50 @@ def test_trend_case_set_identity_changes_even_when_case_count_and_cohort_match()
     assert by_id["a"].case_count == by_id["c"].case_count
     assert by_id["d"].case_set_key is None
     assert "caseSetKey" in by_id["a"].model_dump(by_alias=True)
+
+
+def test_partial_blocked_execution_never_becomes_a_quality_regression_or_improvement() -> None:
+    good, gc = execution("good", 20, "feature/work", "first", list(range(6)))
+    partial, pc = execution("partial", 21, "feature/work", "second", [])
+    pc[0]["verdicts"] = ["error"]
+    pc[0]["error"] = "HTTP 401: execution access rejected"
+    partial["unit_config"]["pass_rate_threshold"] = 0.9
+    good["unit_config"]["pass_rate_threshold"] = 0.9
+    result = build_history_insights(SCOPE, WINDOW, [good, partial], gc + pc)
+    by_id = {run.run_id: run for run in result.runs}
+    assert by_id["good"].quality_measured
+    assert not by_id["partial"].quality_measured
+    assert by_id["partial"].blocked_cases == 1
+    assert by_id["partial"].pass_rate_threshold == 90
+    assert result.branches[0].direction == "insufficient"
+    assert result.branches[0].latest_pass_rate == pytest.approx(600 / 7)
+    assert result.execution_issues[0].case_name == "case-0"
+    assert result.execution_issues[0].error == "HTTP 401: execution access rejected"
+    assert result.execution_issues[0].run_id == "partial"
+    assert (
+        sum(case.failed for case in result.cases) == 7
+    )  # six real partial failures, one earlier failure
+
+
+def test_failed_case_verdict_is_measured_but_missing_nonfinal_or_inconsistent_evidence_is_not() -> (
+    None
+):
+    raw, cases = execution("a", 20, "feature/work", "sha", list(range(6)))
+    assert build_history_insights(SCOPE, WINDOW, [raw], cases).runs[0].quality_measured
+    assert not build_history_insights(SCOPE, WINDOW, [raw], cases[:3]).runs[0].quality_measured
+    raw["summary"]["passed"] = 7
+    assert not build_history_insights(SCOPE, WINDOW, [raw], cases).runs[0].quality_measured
+    for state in ("skipped", "pending", "xpassed"):
+        changed = deepcopy(cases)
+        changed[0]["verdicts"] = [state]
+        assert not build_history_insights(SCOPE, WINDOW, [raw], changed).runs[0].quality_measured
+
+
+def test_run_level_error_is_retained_without_inventing_a_root_cause_or_zero_quality() -> None:
+    raw, _ = execution("infra", 20, "feature/work", "sha", [], status="error")
+    raw["error"] = "HTTP 401"
+    result = build_history_insights(SCOPE, WINDOW, [raw], [])
+    assert not result.runs[0].quality_measured
+    assert result.execution_issues[0].error == "HTTP 401"
+    assert result.execution_issues[0].case_name is None
+    assert result.execution_issues[0].model_dump(by_alias=True)["runId"] == "infra"
