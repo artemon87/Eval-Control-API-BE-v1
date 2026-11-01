@@ -90,6 +90,11 @@ class UnitVersionSummary(APIModel):
     pass_rate_pct: float
 
 
+class UnitSkillOption(APIModel):
+    skill: str
+    github_repository: str | None = None
+
+
 class UnitComparison(APIModel):
     skill: str
     environment: str | None
@@ -100,3 +105,4 @@ class UnitComparison(APIModel):
     pass_rate_delta: float
     duration_delta_ms: float | None
     metrics: list[MetricComparison]
+
