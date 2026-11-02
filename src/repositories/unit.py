@@ -5,8 +5,10 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from src.config import Settings
 from src.models import GitFilters, GroupingFilters, TimeWindow
+from src.models.unit_history import UnitHistoryScope
 from src.repositories.base import MongoRepository, apply_git_filters, normalize_document
 from src.repositories.time_window import apply_started_at_window
+from src.repositories.unit_history import list_history_scopes, load_history_inputs
 
 GROUP_OPERATOR = "$group"
 TARGET_ENVIRONMENT_FIELD = "unit_config.target_environment"
@@ -53,6 +55,14 @@ class UnitRepository:
     def __init__(self, database: AsyncDatabase[dict[str, Any]], settings: Settings) -> None:
         self.runs = MongoRepository(database[settings.unit_runs_collection])
         self.cases = MongoRepository(database[settings.unit_cases_collection])
+
+    async def list_history_scopes(self) -> list[UnitHistoryScope]:
+        return await list_history_scopes(self.runs.collection)
+
+    async def history_inputs(
+        self, scope: UnitHistoryScope, window: TimeWindow
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        return await load_history_inputs(self.runs.collection, self.cases.collection, scope, window)
 
     async def list_skills(self) -> list[dict[str, Any]]:
         """Catalog every recorded skill/repository, independent of run-list paging."""

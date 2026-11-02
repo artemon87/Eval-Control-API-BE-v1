@@ -18,7 +18,10 @@ from src.models import (
     UnitVersionSummary,
 )
 from src.models.unit import UnitSkillOption
+from src.models.unit_history import UnitHistoryInsights, UnitHistoryScope
+from src.repositories.unit_history import decode_scope, history_window
 from src.services import build_unit_comparison
+from src.services.unit_history import build_history_insights
 
 router = APIRouter(prefix="/unit", tags=["unit evaluations"])
 Limit = Annotated[int, Query(ge=1, le=200)]
@@ -27,6 +30,27 @@ Limit = Annotated[int, Query(ge=1, le=200)]
 @router.get("/skills", response_model=list[UnitSkillOption])
 async def list_unit_skills(repository: UnitRepositoryDependency) -> list[UnitSkillOption]:
     return [UnitSkillOption.model_validate(item) for item in await repository.list_skills()]
+
+
+@router.get("/history/scopes", response_model=list[UnitHistoryScope])
+async def unit_history_scopes(repository: UnitRepositoryDependency) -> list[UnitHistoryScope]:
+    return await repository.list_history_scopes()
+
+
+@router.get("/history/insights", response_model=UnitHistoryInsights)
+async def unit_history_insights(
+    repository: UnitRepositoryDependency,
+    time_window: TimeWindowDependency,
+    scope_key: Annotated[str, Query(min_length=1, max_length=4096)],
+    cohort_key: Annotated[str | None, Query(max_length=64)] = None,
+) -> UnitHistoryInsights:
+    try:
+        scope = decode_scope(scope_key)
+        window = history_window(time_window)
+        runs, observations = await repository.history_inputs(scope, window)
+        return build_history_insights(scope, window, runs, observations, cohort_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/runs", response_model=Page[UnitRun])
