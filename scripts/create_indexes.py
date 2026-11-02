@@ -25,6 +25,15 @@ async def main() -> None:
                     [
                         ("eval_type", ASCENDING),
                         ("skill", ASCENDING),
+                        ("started_at", DESCENDING),
+                        ("_id", DESCENDING),
+                    ],
+                    name="unit_skill_insight_window",
+                ),
+                IndexModel(
+                    [
+                        ("eval_type", ASCENDING),
+                        ("skill", ASCENDING),
                         ("environment", ASCENDING),
                         ("unit_config.skill_version", ASCENDING),
                         ("started_at", DESCENDING),
@@ -110,3 +119,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
