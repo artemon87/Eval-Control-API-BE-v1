@@ -91,6 +91,7 @@ class _Run:
     model: HistoryRun
     config: dict[str, Any]
     complete_config: bool
+    source_branch: str | None = None
     cases: dict[str, _Case] = field(default_factory=dict)
 
     @property
@@ -189,7 +190,9 @@ def _prepare_runs(
             error=(_text(raw.get("error")) or "")[:4096] or None,
             pass_rate_threshold=_number(config_raw.get("pass_rate_threshold")),
         )
-        run = _Run(model=model, config=config, complete_config=complete_config)
+        run = _Run(
+            model=model, config=config, complete_config=complete_config, source_branch=branch
+        )
         identity_complete = True
         for item in by_run[run_id]:
             identity = item.get("_id", {})
@@ -549,15 +552,54 @@ def _execution_issues(runs: list[_Run]) -> list[HistoryIssue]:
 
 
 def _annotate_trend_transitions(runs: list[_Run]) -> None:
-    """Adjacent executions only; never bridge an error, missing evidence or another context."""
+    """Separate comparable-series deltas from same-branch context chronology."""
     previous: dict[str, _Run] = {}
+    chronological: dict[str, _Run] = {}
     for run in runs:
         model = run.model
+        # Context links explain chronology on one source branch; they are never deltas.
+        across = chronological.get(run.source_branch) if run.source_branch else None
+        if run.source_branch:
+            chronological[run.source_branch] = run
+        if across and model.quality_measured and across.model.quality_measured:
+            changes = [
+                title
+                for field_name, title in (
+                    ("stage", "Stage changed"),
+                    ("target_environment", "Target changed"),
+                    ("environment", "Execution environment changed"),
+                )
+                if getattr(model, field_name) != getattr(across.model, field_name)
+            ]
+            if changes:
+                model.trend_context_previous_run_id = across.model.run_id
+                model.trend_context_changes = changes
         before = previous.get(model.branch_key)
         previous[model.branch_key] = run
         if before is None:
+            model.trend_note = (
+                "No earlier run in this branch, stage and target within the selected window."
+            )
             continue
         model.trend_previous_run_id = before.model.run_id
+        if (
+            run.source_branch
+            and model.quality_measured
+            and before.model.quality_measured
+            and model.cohort_key
+            and before.model.cohort_key
+            and model.case_set_key
+            and before.model.case_set_key
+            and (
+                model.cohort_key != before.model.cohort_key
+                or model.case_set_key != before.model.case_set_key
+            )
+        ):
+            model.trend_transition = "settings_changed"
+            model.trend_note = (
+                "Settings or test set changed; this connection shows chronology only."
+            )
+            continue
         if not (
             run.complete_config
             and before.complete_config
@@ -568,12 +610,7 @@ def _annotate_trend_transitions(runs: list[_Run]) -> None:
             and before.model.case_set_key
         ):
             model.trend_transition = "incomplete"
-            continue
-        if (
-            model.cohort_key != before.model.cohort_key
-            or model.case_set_key != before.model.case_set_key
-        ):
-            model.trend_transition = "settings_changed"
+            model.trend_note = "Settings or test evidence is incomplete, or an execution has a recorded issue; performance change is unavailable."
             continue
         model.trend_transition = "comparable"
         if model.pass_rate_pct is not None and before.model.pass_rate_pct is not None:

@@ -21,6 +21,9 @@ class UnitHistoryScope(HistoryModel):
 
 
 class HistoryRun(HistoryModel):
+    trend_context_previous_run_id: str | None = None
+    trend_context_changes: list[str] = Field(default_factory=list)
+    trend_note: str | None = None
     trend_previous_run_id: str | None = None
     trend_transition: Literal["first", "comparable", "settings_changed", "incomplete"] = "first"
     trend_pass_rate_delta: float | None = None
