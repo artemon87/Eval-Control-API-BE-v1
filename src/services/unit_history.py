@@ -578,6 +578,76 @@ def _execution_issues(runs: list[_Run]) -> list[HistoryIssue]:
     return issues
 
 
+def _annotate_observed_references(runs: list[_Run]) -> None:
+    # Recorded score differences are evidence, not established comparison equivalence.
+    previous: dict[str, dict[str, tuple[int, _Run]]] = defaultdict(dict)
+    for index, run in enumerate(runs):
+        model = run.model
+        model.comparison_blockers = [
+            f"{title} not recorded"
+            for name, title in (
+                ("bsa_version", "BSA version"),
+                ("mode", "Evaluation mode"),
+                ("metrics", "Metrics"),
+            )
+            if not run.config.get(name) or run.config.get(name) == "unknown"
+        ]
+        for name, title in (
+            ("stage", "Stage"),
+            ("target_environment", "Target"),
+            ("environment", "Execution environment"),
+        ):
+            if getattr(model, name) in {None, "unknown", ""}:
+                model.comparison_blockers.append(f"{title} not recorded")
+        if not model.quality_measured:
+            model.comparison_blockers.append("Complete measured case results are unavailable")
+        if not run.source_branch:
+            model.comparison_blockers.append("Source branch not recorded")
+            continue
+        context = _json([model.stage, model.target_environment, model.environment])
+        candidates = previous[context]
+        if model.quality_measured:
+            verified = {reference.run_id for reference in model.trend_references}
+            for branch, (_, before) in sorted(
+                candidates.items(), key=lambda item: item[1][0], reverse=True
+            ):
+                if before.model.run_id in verified:
+                    continue
+                warnings = list(model.comparison_blockers)
+                for name, value in before.config.items():
+                    if name in {"mode", "bsa_version", "metrics"} and (
+                        not value or value == "unknown"
+                    ):
+                        warnings.append(f"Reference {name.replace('_', ' ')} not recorded")
+                    if value != run.config.get(name):
+                        warnings.append(f"Recorded {name.replace('_', ' ')} differs")
+                if model.case_set_key != before.model.case_set_key:
+                    warnings.append("Recorded tests or definitions differ")
+                if not run.complete_config or not before.complete_config:
+                    warnings.append("Configuration equivalence is not verified")
+                model.observed_references.append(
+                    HistoryTrendReference(
+                        run_id=before.model.run_id,
+                        branch=branch,
+                        started_at=before.model.started_at,
+                        pass_rate_delta=model.pass_rate_pct - before.model.pass_rate_pct
+                        if model.pass_rate_pct is not None
+                        and before.model.pass_rate_pct is not None
+                        else None,
+                        duration_delta_ms=model.duration_ms - before.model.duration_ms
+                        if model.duration_ms is not None and before.model.duration_ms is not None
+                        else None,
+                        warnings=sorted(set(warnings))
+                        or ["Comparison equivalence is not verified"],
+                    )
+                )
+            candidates[run.source_branch] = (index, run)
+        if not model.trend_references and not model.observed_references:
+            model.comparison_blockers.append(
+                "No earlier measured execution in the same stage, target and execution environment within this window"
+            )
+
+
 def _annotate_branch_references(runs: list[_Run]) -> None:
     # Keep the latest earlier comparable execution on each branch per exact signature.
     previous: dict[str, dict[str, tuple[int, _Run]]] = defaultdict(dict)
@@ -713,6 +783,7 @@ def build_history_insights(
             )
     _annotate_trend_transitions(runs)
     _annotate_branch_references(runs)
+    _annotate_observed_references(runs)
     cohorts, groups = _cohorts(runs)
     selected = cohort_key or (cohorts[0].key if cohorts else None)
     if cohort_key and cohort_key not in groups:
