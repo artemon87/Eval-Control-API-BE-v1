@@ -598,3 +598,34 @@ def test_same_timestamp_uses_repository_tie_order_for_trend_reference() -> None:
     assert result.runs[0].run_id == "a-second"
     assert result.runs[0].trend_previous_run_id == "z-first"
     assert result.runs[0].trend_pass_rate_delta == 50
+
+
+def test_settings_filter_groups_versions_and_agent_across_contexts() -> None:
+    rows = [
+        execution(
+            str(i),
+            10 + i,
+            "feature/a",
+            str(i),
+            [0],
+            covered=[0],
+            config={"stage": stage, "target_environment": target, "agent_name": agent},
+        )
+        for i, (stage, target, agent) in enumerate(
+            [("dev", "east", "agent-a"), ("prod", "west", "agent-a"), ("prod", "west", "agent-b")]
+        )
+    ]
+    result = build_history_insights(
+        SCOPE.model_copy(update={"all_stages": True, "all_targets": True}),
+        WINDOW,
+        [r for r, _ in rows],
+        [c for _, cs in rows for c in cs],
+    )
+    assert len(result.settings_groups) == 2
+    group = next(g for g in result.settings_groups if "Agent agent-a" in g.label)
+    assert group.run_ids == ["0", "1"]
+    assert len(group.cohort_keys) == 2
+    assert group.label == "BSA 3.14 · Skill 0.8.0 · Agent agent-a"
+    assert len(result.cohorts) == 3
+    assert len(result.branches) == 2
+    assert result.model_dump(by_alias=True)["settingsGroups"][0]["runIds"] == ["0", "1"]

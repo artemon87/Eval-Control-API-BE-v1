@@ -16,6 +16,7 @@ from src.models.unit_history import (
     HistoryCommit,
     HistoryIssue,
     HistoryRun,
+    HistorySettingsGroup,
     HistorySignals,
     UnitHistoryInsights,
     UnitHistoryScope,
@@ -249,6 +250,30 @@ def _prepare_runs(
         result.append(run)
     # Keep the repository's _id ordering when executions have identical timestamps.
     return sorted(result, key=lambda run: run.model.started_at)
+
+
+def _settings_groups(runs: list[_Run]) -> list[HistorySettingsGroup]:
+    # This display filter is deliberately broader than comparison equivalence.
+    groups: dict[str, list[_Run]] = defaultdict(list)
+    for run in runs:
+        key = _json([run.config[name] for name in ("bsa_version", "skill_version", "agent_name")])
+        groups[key].append(run)
+    return sorted(
+        [
+            HistorySettingsGroup(
+                key=key,
+                label=(
+                    f"BSA {group[0].config['bsa_version'] or 'Not recorded'} · "
+                    f"Skill {group[0].config['skill_version'] or 'Not recorded'} · "
+                    f"Agent {group[0].config['agent_name'] or 'Not recorded'}"
+                ),
+                run_ids=[run.model.run_id for run in group],
+                cohort_keys=sorted({run.model.cohort_key for run in group if run.model.cohort_key}),
+            )
+            for key, group in groups.items()
+        ],
+        key=lambda group: group.label,
+    )
 
 
 def _cohorts(runs: list[_Run]) -> tuple[list[HistoryCohort], dict[str, list[_Run]]]:
@@ -642,6 +667,7 @@ def build_history_insights(
         started_from=cast(datetime, window.started_from),
         started_before=cast(datetime, window.started_before),
         cohorts=cohorts,
+        settings_groups=_settings_groups(runs),
         selected_cohort_key=selected,
         runs=[run.model for run in reversed(runs)],
         branches=branches,
