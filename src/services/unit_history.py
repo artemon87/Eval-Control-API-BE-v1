@@ -15,6 +15,7 @@ from src.models.unit_history import (
     HistoryCohort,
     HistoryCommit,
     HistoryIssue,
+    HistoryProgression,
     HistoryRun,
     HistorySettingsGroup,
     HistorySignals,
@@ -578,6 +579,77 @@ def _execution_issues(runs: list[_Run]) -> list[HistoryIssue]:
     return issues
 
 
+def _progression_reference(run: _Run, before: _Run) -> HistoryTrendReference:
+    warnings = []
+    for name in ("mode", "metrics", "bsa_version"):
+        if not run.config.get(name) or not before.config.get(name):
+            warnings.append(f"{name.replace('_', ' ')} not fully recorded")
+    for name, value in run.config.items():
+        if value != before.config.get(name):
+            warnings.append(f"Recorded {name.replace('_', ' ')} changed")
+    if run.definitions != before.definitions:
+        warnings.append("Tests or definitions changed; inspect shared, added and removed tests")
+    return HistoryTrendReference(
+        run_id=before.model.run_id,
+        branch=before.source_branch or "Branch not recorded",
+        started_at=before.model.started_at,
+        pass_rate_delta=run.model.pass_rate_pct - before.model.pass_rate_pct
+        if run.model.pass_rate_pct is not None and before.model.pass_rate_pct is not None
+        else None,
+        duration_delta_ms=run.model.duration_ms - before.model.duration_ms
+        if run.model.duration_ms is not None and before.model.duration_ms is not None
+        else None,
+        warnings=warnings,
+    )
+
+
+def _annotate_progression(runs: list[_Run]) -> None:
+    previous: dict[str, _Run] = {}
+    branches: dict[str, dict[str, _Run]] = defaultdict(dict)
+    starts: dict[tuple[str, str], _Run] = {}
+    anchors: dict[tuple[str, str], _Run | None] = {}
+    for run in runs:
+        model = run.model
+        if not model.quality_measured:
+            continue
+        key = _digest(
+            [
+                model.stage,
+                model.target_environment,
+                model.environment,
+                [run.config[name] for name in ("bsa_version", "skill_version", "agent_name")],
+            ]
+        )
+        before = previous.get(key)
+        branch = run.source_branch or model.run_id
+        identity = (key, branch)
+        if identity not in starts:
+            starts[identity] = run
+            # Freeze the earlier branch's final execution as of this branch's first run.
+            anchors[identity] = (
+                before
+                if before
+                and before.source_branch
+                and run.source_branch
+                and before.source_branch != run.source_branch
+                else None
+            )
+        model.progression = HistoryProgression(
+            key=key,
+            label=f"{model.stage} · {model.target_environment or 'Target not recorded'} · {model.environment} · BSA {model.bsa_version or 'not recorded'} · Skill {model.skill_version or 'not recorded'} · {model.agent_name or 'Agent not recorded'}",
+            previous_execution=_progression_reference(run, before) if before else None,
+            previous_same_branch=_progression_reference(run, branches[key][branch])
+            if branch in branches[key]
+            else None,
+            previous_branch=_progression_reference(run, anchors[identity])
+            if anchors[identity]
+            else None,
+            branch_start=_progression_reference(run, starts[identity]),
+        )
+        previous[key] = run
+        branches[key][branch] = run
+
+
 def _annotate_observed_references(runs: list[_Run]) -> None:
     # Recorded score differences are evidence, not established comparison equivalence.
     previous: dict[str, dict[str, tuple[int, _Run]]] = defaultdict(dict)
@@ -784,6 +856,7 @@ def build_history_insights(
     _annotate_trend_transitions(runs)
     _annotate_branch_references(runs)
     _annotate_observed_references(runs)
+    _annotate_progression(runs)
     cohorts, groups = _cohorts(runs)
     selected = cohort_key or (cohorts[0].key if cohorts else None)
     if cohort_key and cohort_key not in groups:
