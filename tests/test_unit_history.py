@@ -731,3 +731,20 @@ def test_cross_branch_references_use_latest_earlier_matching_context_and_setting
     assert runs["wrong-settings"].trend_references == []
     assert runs["wrong-tests"].trend_references == []
     assert runs["b"].trend_references[0].run_id == "a"
+
+
+def test_missing_optional_mode_has_observed_reference_without_claiming_equivalence() -> None:
+    rows = [
+        execution("a", 10, "branch-a", "a", [0], covered=[0, 1], config={"mode": None}),
+        execution("b", 11, "branch-b", "b", [0, 1], covered=[0, 1], config={"mode": None}),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cs in rows for c in cs]
+    )
+    current = result.runs[0]
+    assert current.trend_references == []
+    assert current.observed_references[0].run_id == "a"
+    assert current.observed_references[0].pass_rate_delta == 50
+    assert "Evaluation mode not recorded" in current.observed_references[0].warnings
+    assert "Evaluation mode not recorded" in current.comparison_blockers
+    assert result.runs[1].observed_references == []

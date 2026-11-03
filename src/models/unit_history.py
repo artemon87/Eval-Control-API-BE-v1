@@ -21,6 +21,7 @@ class UnitHistoryScope(HistoryModel):
 
 
 class HistoryTrendReference(HistoryModel):
+    warnings: list[str] = Field(default_factory=list)
     run_id: str
     branch: str
     started_at: datetime
@@ -29,6 +30,8 @@ class HistoryTrendReference(HistoryModel):
 
 
 class HistoryRun(HistoryModel):
+    observed_references: list[HistoryTrendReference] = Field(default_factory=list)
+    comparison_blockers: list[str] = Field(default_factory=list)
     source_branch: str | None = None
     trend_references: list[HistoryTrendReference] = Field(default_factory=list)
     trend_context_previous_run_id: str | None = None
