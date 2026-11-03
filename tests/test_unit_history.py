@@ -824,3 +824,45 @@ def test_progression_separates_environment_and_settings_but_reports_test_changes
     )
     assert runs["bsa"].progression.previous_execution is None
     assert runs["stage"].progression.previous_execution is None
+
+
+def test_previous_branch_updates_when_returning_to_an_older_branch() -> None:
+    rows = [
+        execution("a1", 10, "branch-a", "a", [0], covered=[0, 1]),
+        execution("b1", 11, "branch-b", "b", [0, 1], covered=[0, 1]),
+        execution("a2", 12, "branch-a", "c", [0], covered=[0, 1]),
+        execution("a3", 13, "branch-a", "d", [0, 1], covered=[0, 1]),
+        execution("b2", 14, "branch-b", "e", [0], covered=[0, 1]),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cs in rows for c in cs]
+    )
+    runs = {run.run_id: run for run in result.runs}
+    assert runs["a1"].progression.previous_branch is None
+    assert runs["a2"].progression.previous_branch.run_id == "b1"
+    assert runs["a2"].progression.previous_branch.pass_rate_delta == -50
+    assert runs["a3"].progression.previous_branch.run_id == "b1"
+    assert runs["a3"].progression.previous_same_branch.run_id == "a2"
+    assert runs["b2"].progression.previous_branch.run_id == "a3"
+
+
+def test_metrics_recorded_on_cases_fill_missing_run_configuration() -> None:
+    rows = [
+        execution("a", 10, "branch-a", "a", [0], covered=[0], config={"metrics": None}),
+        execution("b", 11, "branch-b", "b", [0], covered=[0], config={"metrics": None}),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cs in rows for c in cs]
+    )
+    ref = result.runs[0].progression.previous_branch
+    assert ref is not None
+    assert not any("metrics" in warning for warning in ref.warnings)
+    assert any("Metrics: accuracy" in cohort.details for cohort in result.cohorts)
+
+
+def test_previous_branch_preserves_repository_order_at_identical_timestamps() -> None:
+    rows = [execution(name, 10, branch, name, [0], covered=[0])
+            for name, branch in [("a", "first"), ("b", "second"), ("c", "third"), ("d", "first")]]
+    result = build_history_insights(SCOPE, WINDOW, [r for r, _ in rows], [c for _, cs in rows for c in cs])
+    runs = {run.run_id: run for run in result.runs}
+    assert runs["d"].progression.previous_branch.run_id == "c"

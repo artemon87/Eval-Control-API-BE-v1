@@ -198,6 +198,7 @@ def _prepare_runs(
             model=model, config=config, complete_config=complete_config, source_branch=branch
         )
         identity_complete = True
+        recorded_metrics: set[str] = set()
         for item in by_run[run_id]:
             identity = item.get("_id", {})
             name = _text(identity.get("name"))
@@ -211,6 +212,7 @@ def _prepare_runs(
                 if not isinstance(definition, dict):
                     continue
                 metrics = definition.get("metrics", [])
+                recorded_metrics.update(str(metric) for metric in metrics)
                 definitions.append(
                     _json(
                         {
@@ -226,6 +228,13 @@ def _prepare_runs(
                 verdict=_verdict(item.get("verdicts", [])),
                 definition=_json(sorted(set(definitions))),
                 error=(_text(item.get("error")) or "")[:4096] or None,
+            )
+        if not config["metrics"] and recorded_metrics:
+            config["metrics"] = sorted(recorded_metrics)
+            run.complete_config = bool(
+                config["bsa_version"]
+                and config["bsa_version"].lower() != "unknown"
+                and config["mode"]
             )
         model.case_count = len(run.cases)
         model.cases_complete = bool(
@@ -607,7 +616,6 @@ def _annotate_progression(runs: list[_Run]) -> None:
     previous: dict[str, _Run] = {}
     branches: dict[str, dict[str, _Run]] = defaultdict(dict)
     starts: dict[tuple[str, str], _Run] = {}
-    anchors: dict[tuple[str, str], _Run | None] = {}
     for run in runs:
         model = run.model
         if not model.quality_measured:
@@ -625,15 +633,13 @@ def _annotate_progression(runs: list[_Run]) -> None:
         identity = (key, branch)
         if identity not in starts:
             starts[identity] = run
-            # Freeze the earlier branch's final execution as of this branch's first run.
-            anchors[identity] = (
-                before
-                if before
-                and before.source_branch
-                and run.source_branch
-                and before.source_branch != run.source_branch
-                else None
-            )
+        # Look back from this execution, not the branch's first appearance.
+        # Returning to an older branch must still compare with newer work.
+        other = next(
+            (candidate for name, candidate in reversed(branches[key].items())
+             if name != branch and candidate.source_branch and run.source_branch),
+            None,
+        )
         model.progression = HistoryProgression(
             key=key,
             label=f"{model.stage} · {model.target_environment or 'Target not recorded'} · {model.environment} · BSA {model.bsa_version or 'not recorded'} · Skill {model.skill_version or 'not recorded'} · {model.agent_name or 'Agent not recorded'}",
@@ -641,12 +647,13 @@ def _annotate_progression(runs: list[_Run]) -> None:
             previous_same_branch=_progression_reference(run, branches[key][branch])
             if branch in branches[key]
             else None,
-            previous_branch=_progression_reference(run, anchors[identity])
-            if anchors[identity]
+            previous_branch=_progression_reference(run, other)
+            if other
             else None,
             branch_start=_progression_reference(run, starts[identity]),
         )
         previous[key] = run
+        branches[key].pop(branch, None)
         branches[key][branch] = run
 
 
