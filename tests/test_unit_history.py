@@ -600,6 +600,86 @@ def test_same_timestamp_uses_repository_tie_order_for_trend_reference() -> None:
     assert result.runs[0].trend_pass_rate_delta == 50
 
 
+def test_context_chronology_explains_single_point_series_without_claiming_deltas() -> None:
+    rows = [
+        execution(
+            "dev",
+            10,
+            "feature/a",
+            "a",
+            [0],
+            covered=[0, 1],
+            config={"stage": "dev", "target_environment": "east"},
+        ),
+        execution(
+            "preprod",
+            11,
+            "feature/a",
+            "b",
+            [0, 1],
+            covered=[0, 1],
+            config={"stage": "preprod", "target_environment": "west"},
+        ),
+        execution(
+            "other",
+            12,
+            "feature/b",
+            "c",
+            [0],
+            covered=[0, 1],
+            config={"stage": "prod", "target_environment": "west"},
+        ),
+        execution(
+            "broken",
+            13,
+            "feature/a",
+            "d",
+            [],
+            covered=[],
+            status="error",
+            config={"stage": "preprod", "target_environment": "west"},
+        ),
+        execution(
+            "after",
+            14,
+            "feature/a",
+            "e",
+            [0, 1],
+            covered=[0, 1],
+            config={"stage": "prod", "target_environment": "west"},
+        ),
+    ]
+    broad = SCOPE.model_copy(update={"all_stages": True, "all_targets": True})
+    result = build_history_insights(
+        broad, WINDOW, [r for r, _ in rows], [c for _, cases in rows for c in cases]
+    )
+    runs = {r.run_id: r for r in result.runs}
+    assert runs["preprod"].trend_context_previous_run_id == "dev"
+    assert runs["preprod"].trend_context_changes == ["Stage changed", "Target changed"]
+    assert runs["preprod"].trend_pass_rate_delta is None
+    assert runs["preprod"].trend_transition == "first"
+    assert "No earlier run" in runs["preprod"].trend_note
+    assert runs["other"].trend_context_previous_run_id is None
+    assert runs["after"].trend_context_previous_run_id is None
+    assert result.model_dump(by_alias=True)["runs"][-2]["trendContextChanges"] == [
+        "Stage changed",
+        "Target changed",
+    ]
+
+
+def test_recorded_settings_change_is_chronology_even_when_configuration_is_incomplete() -> None:
+    rows = [
+        execution("old", 10, "feature/a", "a", [0], covered=[0], bsa="1.17", config={"mode": None}),
+        execution("new", 11, "feature/a", "b", [0], covered=[0], bsa="1.18", config={"mode": None}),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cases in rows for c in cases]
+    )
+    assert result.runs[0].trend_transition == "settings_changed"
+    assert result.runs[0].trend_pass_rate_delta is None
+    assert all(not cohort.configuration_complete for cohort in result.cohorts)
+
+
 def test_settings_filter_groups_versions_and_agent_across_contexts() -> None:
     rows = [
         execution(
@@ -629,3 +709,25 @@ def test_settings_filter_groups_versions_and_agent_across_contexts() -> None:
     assert len(result.cohorts) == 3
     assert len(result.branches) == 2
     assert result.model_dump(by_alias=True)["settingsGroups"][0]["runIds"] == ["0", "1"]
+
+
+def test_cross_branch_references_use_latest_earlier_matching_context_and_settings() -> None:
+    rows = [
+        execution("a", 10, "branch-a", "a", [0], covered=[0, 1]),
+        execution("b", 11, "branch-b", "b", [0, 1], covered=[0, 1]),
+        execution("wrong-settings", 12, "branch-c", "c", [0], covered=[0, 1], bsa="different"),
+        execution("wrong-tests", 13, "branch-c", "d", [0], covered=[0]),
+        execution("c", 14, "branch-a", "e", [0], covered=[0, 1]),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cs in rows for c in cs]
+    )
+    runs = {r.run_id: r for r in result.runs}
+    assert runs["a"].trend_references == []
+    assert [(r.run_id, r.branch, r.pass_rate_delta) for r in runs["c"].trend_references] == [
+        ("b", "branch-b", -50),
+        ("a", "branch-a", 0),
+    ]
+    assert runs["wrong-settings"].trend_references == []
+    assert runs["wrong-tests"].trend_references == []
+    assert runs["b"].trend_references[0].run_id == "a"

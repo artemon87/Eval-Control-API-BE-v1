@@ -20,7 +20,20 @@ class UnitHistoryScope(HistoryModel):
     environment: str
 
 
+class HistoryTrendReference(HistoryModel):
+    run_id: str
+    branch: str
+    started_at: datetime
+    pass_rate_delta: float | None
+    duration_delta_ms: float | None
+
+
 class HistoryRun(HistoryModel):
+    source_branch: str | None = None
+    trend_references: list[HistoryTrendReference] = Field(default_factory=list)
+    trend_context_previous_run_id: str | None = None
+    trend_context_changes: list[str] = Field(default_factory=list)
+    trend_note: str | None = None
     trend_previous_run_id: str | None = None
     trend_transition: Literal["first", "comparable", "settings_changed", "incomplete"] = "first"
     trend_pass_rate_delta: float | None = None
