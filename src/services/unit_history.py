@@ -125,6 +125,7 @@ def _prepare_runs(
     raw_runs: list[dict[str, Any]],
     observations: list[dict[str, Any]],
     window: TimeWindow,
+    split_context: bool = False,
 ) -> list[_Run]:
     by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for observation in observations:
@@ -147,16 +148,28 @@ def _prepare_runs(
         branch = _text(raw.get("git_ref"))
         if branch and branch.startswith("refs/heads/"):
             branch = branch[len("refs/heads/") :]
-        branch_key = _json(branch)
+        stage = _text(config_raw.get("stage")) or _text(raw.get("environment")) or "unknown"
+        target = _text(config_raw.get("target_environment"))
+        environment = _text(raw.get("environment")) or "unknown"
+        context = [stage, target, environment]
+        branch_key = _json([branch, context]) if split_context else _json(branch)
         total, passed = _integer(summary.get("total")), _integer(summary.get("passed"))
         if total is None or passed is None or passed > total:
             total, passed = None, None
         status = _text(raw.get("execution_status")) or "unknown"
         record_count = sum(_integer(item.get("records")) or 0 for item in by_run[run_id])
         model = HistoryRun(
+            stage=stage,
+            target_environment=target,
+            environment=environment,
+            bsa_version=_text(config_raw.get("bsa_version")),
             run_id=run_id,
             branch_key=branch_key,
-            branch_label=branch or "Branch not recorded",
+            branch_label=(
+                f"{branch} · {stage} · {target or 'Target not recorded'} · {environment}"
+                if split_context and branch
+                else branch or "Branch not recorded"
+            ),
             git_sha=_text(raw.get("git_sha")),
             actor=_text(raw.get("actor")),
             trigger=_text(raw.get("trigger")),
@@ -217,7 +230,7 @@ def _prepare_runs(
             model.case_set_key = _digest(run.definitions)
             # A subset still supplies evidence for its executed cases. Cohorts match
             # runtime/evaluator settings and threshold profiles, not case-set size.
-            model.cohort_key = _digest([config, sorted(set(run.definitions.values()))])
+            model.cohort_key = _digest([context, config, sorted(set(run.definitions.values()))])
         model.blocked_cases = sum(case.verdict == "blocked" for case in run.cases.values())
         model.quality_measured = bool(
             model.cases_complete
@@ -256,6 +269,7 @@ def _cohorts(runs: list[_Run]) -> tuple[list[HistoryCohort], dict[str, list[_Run
         label = f"Settings {ordinal} · BSA {example.config['bsa_version'] or 'not recorded'} · "
         case_count = len({case for run in group for case in run.cases})
         label += f"{example.config['mode'] or 'mode not recorded'} · {case_count} case identities"
+        label += f" · {example.model.stage} · {example.model.target_environment or 'Target not recorded'}"
         details = [
             f"Runtime: {example.config['bsa_environment'] or 'not recorded'} / "
             f"BSA {example.config['bsa_version'] or 'not recorded'}",
@@ -450,7 +464,10 @@ def _cases(
             failures.extend(failed)
             latest = by_branch[branch.key][-1]
             state: CaseState = "unavailable"
-            if latest.model.execution_status in {"error", "blocked"} or latest.model.verdict in {
+            if latest.model.execution_status in {
+                "error",
+                "blocked",
+            } or latest.model.verdict in {
                 "error",
                 "blocked",
             }:
@@ -534,7 +551,7 @@ def build_history_insights(
     cohort_key: str | None = None,
 ) -> UnitHistoryInsights:
     window = history_window(time_window)
-    runs = _prepare_runs(raw_runs, observations, window)
+    runs = _prepare_runs(raw_runs, observations, window, scope.all_stages or scope.all_targets)
     scope_complete = bool(
         scope.github_repository
         and scope.target_environment
@@ -543,6 +560,13 @@ def build_history_insights(
     )
     for run in runs:
         run.complete_config = run.complete_config and scope_complete
+        if scope.all_stages or scope.all_targets:
+            run.complete_config = bool(
+                run.complete_config
+                and run.model.stage != "unknown"
+                and run.model.target_environment
+                and run.model.environment != "unknown"
+            )
     cohorts, groups = _cohorts(runs)
     selected = cohort_key or (cohorts[0].key if cohorts else None)
     if cohort_key and cohort_key not in groups:

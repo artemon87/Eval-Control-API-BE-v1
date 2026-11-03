@@ -10,6 +10,8 @@ class HistoryModel(BaseModel):
 
 
 class UnitHistoryScope(HistoryModel):
+    all_stages: bool = False
+    all_targets: bool = False
     scope_key: str
     skill: str
     github_repository: str | None
@@ -19,6 +21,10 @@ class UnitHistoryScope(HistoryModel):
 
 
 class HistoryRun(HistoryModel):
+    stage: str = "unknown"
+    target_environment: str | None = None
+    environment: str = "unknown"
+    bsa_version: str | None = None
     run_id: str
     branch_key: str
     branch_label: str
@@ -84,7 +90,14 @@ class HistoryBranch(HistoryModel):
 
 
 CaseState = Literal[
-    "passed", "failed", "blocked", "xpassed", "skipped", "pending", "not_run", "unavailable"
+    "passed",
+    "failed",
+    "blocked",
+    "xpassed",
+    "skipped",
+    "pending",
+    "not_run",
+    "unavailable",
 ]
 
 

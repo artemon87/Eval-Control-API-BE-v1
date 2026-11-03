@@ -2,13 +2,13 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-
 from src.api.dependencies import (
     GitFilterDependency,
     GroupingFilterDependency,
     TimeWindowDependency,
     UnitRepositoryDependency,
 )
+
 from src.models import (
     Page,
     TrendPoint,
@@ -28,12 +28,16 @@ Limit = Annotated[int, Query(ge=1, le=200)]
 
 
 @router.get("/skills", response_model=list[UnitSkillOption])
-async def list_unit_skills(repository: UnitRepositoryDependency) -> list[UnitSkillOption]:
+async def list_unit_skills(
+    repository: UnitRepositoryDependency,
+) -> list[UnitSkillOption]:
     return [UnitSkillOption.model_validate(item) for item in await repository.list_skills()]
 
 
 @router.get("/history/scopes", response_model=list[UnitHistoryScope])
-async def unit_history_scopes(repository: UnitRepositoryDependency) -> list[UnitHistoryScope]:
+async def unit_history_scopes(
+    repository: UnitRepositoryDependency,
+) -> list[UnitHistoryScope]:
     return await repository.list_history_scopes()
 
 
@@ -43,9 +47,13 @@ async def unit_history_insights(
     time_window: TimeWindowDependency,
     scope_key: Annotated[str, Query(min_length=1, max_length=4096)],
     cohort_key: Annotated[str | None, Query(max_length=64)] = None,
+    all_stages: bool = False,
+    all_targets: bool = False,
 ) -> UnitHistoryInsights:
     try:
-        scope = decode_scope(scope_key)
+        scope = decode_scope(scope_key).model_copy(
+            update={"all_stages": all_stages, "all_targets": all_targets}
+        )
         window = history_window(time_window)
         runs, observations = await repository.history_inputs(scope, window)
         return build_history_insights(scope, window, runs, observations, cohort_key)
@@ -134,7 +142,10 @@ async def unit_case_trend(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return Page(items=[TrendPoint.model_validate(item) for item in items], next_cursor=next_cursor)
+    return Page(
+        items=[TrendPoint.model_validate(item) for item in items],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/trends/skills/{skill}", response_model=Page[TrendPoint])
@@ -160,7 +171,10 @@ async def unit_skill_trend(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return Page(items=[TrendPoint.model_validate(item) for item in items], next_cursor=next_cursor)
+    return Page(
+        items=[TrendPoint.model_validate(item) for item in items],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/skills/{skill}/versions", response_model=list[UnitVersionSummary])
@@ -171,9 +185,8 @@ async def list_skill_versions(
     stage: str | None = None,
     target_environment: str | None = None,
 ) -> list[UnitVersionSummary]:
-    runs = await repository.latest_runs_by_version(
-        skill, environment, stage, target_environment
-    )
+    runs = await repository.latest_runs_by_version(skill, environment, stage, target_environment)
+
     def started_at(run: dict[str, object]) -> str | None:
         value = run.get("started_at")
         return value.isoformat() if isinstance(value, datetime) else None
@@ -215,4 +228,3 @@ async def compare_skill_versions(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-

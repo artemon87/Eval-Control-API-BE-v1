@@ -92,7 +92,13 @@ def sample() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         execution("f3", 29, "feature/format", "f67", list(range(7))),
         execution("t1", 22, "experiment/timeout", "a91", [0, 1, 2, 3, 6]),
         execution(
-            "t2", 30, "experiment/timeout", "b24", [0, 1, 4, 5], covered=[0, 1, 4, 5], bsa="3.15"
+            "t2",
+            30,
+            "experiment/timeout",
+            "b24",
+            [0, 1, 4, 5],
+            covered=[0, 1, 4, 5],
+            bsa="3.15",
         ),
     ]
     return [row[0] for row in rows], [case for _, cases in rows for case in cases]
@@ -108,7 +114,11 @@ def test_global_evidence_counts_match_the_approved_landscape() -> None:
     assert cohort.run_count == 11
     recurring = next(item for item in result.cases if item.key == result.signals.recurring_case_key)
     assert recurring.label == "case-5"
-    assert (recurring.failed, recurring.executions, recurring.affected_branches) == (6, 11, 4)
+    assert (recurring.failed, recurring.executions, recurring.affected_branches) == (
+        6,
+        11,
+        4,
+    )
     assert result.signals.inconsistent_updates == 1
     inconsistent = next(
         item for item in result.cases if item.key in result.signals.inconsistent_case_keys
@@ -213,7 +223,10 @@ def test_null_summary_and_case_records_do_not_crash_or_create_zero_score_improve
 
 def test_full_half_open_window_has_no_200_run_cap_and_ignores_future_injected_records() -> None:
     entries = [execution(f"r-{i:04}", 20, "main", f"sha-{i}", [0], covered=[0]) for i in range(240)]
-    raw_runs, observations = [r for r, _ in entries], [c for _, cs in entries for c in cs]
+    raw_runs, observations = (
+        [r for r, _ in entries],
+        [c for _, cs in entries for c in cs],
+    )
     at_start = deepcopy(raw_runs[0])
     at_start.update(run_id="start", started_at=WINDOW.started_from)
     at_end = deepcopy(raw_runs[0])
@@ -240,7 +253,10 @@ def test_scope_keys_preserve_repository_and_missing_metadata_without_broadening(
     assert missing.scope_key != SCOPE.scope_key
     query = history_run_query(missing, WINDOW)
     assert query["eval_type"] == "unit" and query["skill"] == "payroll"
-    assert query["started_at"] == {"$gte": WINDOW.started_from, "$lt": WINDOW.started_before}
+    assert query["started_at"] == {
+        "$gte": WINDOW.started_from,
+        "$lt": WINDOW.started_before,
+    }
     literals = [part["$eq"][1]["$literal"] for part in query["$expr"]["$and"]]
     assert literals == [None, "runner", None, "runner"]
     assert "$trim" in str(query) and "unit_config.stage" in str(query)
@@ -383,7 +399,10 @@ def test_trend_case_set_identity_changes_even_when_case_count_and_cohort_match()
     cc[0]["_id"]["name"] = "replacement-case"
     incomplete, ic = execution("d", 23, "main", "four", list(range(7)))
     result = build_history_insights(
-        SCOPE, WINDOW, [first, same, changed, incomplete], fc + list(reversed(sc)) + cc + ic[:3]
+        SCOPE,
+        WINDOW,
+        [first, same, changed, incomplete],
+        fc + list(reversed(sc)) + cc + ic[:3],
     )
     by_id = {run.run_id: run for run in result.runs}
     assert by_id["a"].case_set_key == by_id["b"].case_set_key
@@ -439,3 +458,47 @@ def test_run_level_error_is_retained_without_inventing_a_root_cause_or_zero_qual
     assert result.execution_issues[0].error == "HTTP 401"
     assert result.execution_issues[0].case_name is None
     assert result.execution_issues[0].model_dump(by_alias=True)["runId"] == "infra"
+
+
+def test_broad_scope_keeps_repository_and_skill_filters() -> None:
+    broad = SCOPE.model_copy(update={"all_stages": True, "all_targets": True})
+    clauses = history_run_query(broad, WINDOW)["$expr"]["$and"]
+    assert len(clauses) == 1  # exact repository remains; only stage/target/runtime broaden
+    assert clauses[0]["$eq"][1] == {"$literal": "org/skills"}
+    assert history_run_query(broad, WINDOW)["skill"] == "payroll"
+    assert len(history_run_query(SCOPE, WINDOW)["$expr"]["$and"]) == 4
+
+
+def test_all_stage_series_and_configurations_keep_latest_run_visible() -> None:
+    rows = [
+        execution(
+            "old",
+            10,
+            "feature/test",
+            "a",
+            [0],
+            covered=[0],
+            bsa="1.17",
+            config={"stage": "dev", "target_environment": "east"},
+        ),
+        execution(
+            "new",
+            30,
+            "feature/test",
+            "b",
+            [0],
+            covered=[0],
+            bsa="1.18",
+            config={"stage": "preprod", "target_environment": "west"},
+        ),
+    ]
+    broad = SCOPE.model_copy(update={"all_stages": True, "all_targets": True})
+    result = build_history_insights(
+        broad, WINDOW, [r for r, _ in rows], [c for _, cases in rows for c in cases]
+    )
+    assert [run.run_id for run in result.runs] == ["new", "old"]
+    assert len(result.branches) == 2
+    assert len(result.cohorts) == 2
+    assert result.runs[0].bsa_version == "1.18"
+    assert result.runs[0].stage == "preprod"
+    assert all(branch.direction == "insufficient" for branch in result.branches)
