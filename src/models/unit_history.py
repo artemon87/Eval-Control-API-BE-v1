@@ -21,6 +21,11 @@ class UnitHistoryScope(HistoryModel):
 
 
 class HistoryRun(HistoryModel):
+    trend_previous_run_id: str | None = None
+    trend_transition: Literal["first", "comparable", "settings_changed", "incomplete"] = "first"
+    trend_pass_rate_delta: float | None = None
+    trend_duration_delta_ms: float | None = None
+    agent_name: str | None = None
     stage: str = "unknown"
     target_environment: str | None = None
     environment: str = "unknown"

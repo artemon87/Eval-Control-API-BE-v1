@@ -502,3 +502,99 @@ def test_all_stage_series_and_configurations_keep_latest_run_visible() -> None:
     assert result.runs[0].bsa_version == "1.18"
     assert result.runs[0].stage == "preprod"
     assert all(branch.direction == "insufficient" for branch in result.branches)
+
+
+def test_adjacent_trend_deltas_and_configuration_labels() -> None:
+    rows = [
+        execution(
+            "one", 10, "feature/a", "a", [0], covered=[0, 1], config={"agent_name": "agent-a"}
+        ),
+        execution(
+            "two", 11, "feature/a", "b", [0, 1], covered=[0, 1], config={"agent_name": "agent-a"}
+        ),
+        execution(
+            "three", 12, "feature/a", "c", [0, 1], covered=[0, 1], config={"agent_name": "agent-a"}
+        ),
+        execution(
+            "new-bsa",
+            13,
+            "feature/a",
+            "d",
+            [0],
+            covered=[0, 1],
+            bsa="1.18",
+            config={"agent_name": "agent-a"},
+        ),
+        execution(
+            "other-branch",
+            14,
+            "feature/b",
+            "e",
+            [0],
+            covered=[0, 1],
+            config={"agent_name": "agent-a"},
+        ),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cases in rows for c in cases]
+    )
+    runs = {run.run_id: run for run in result.runs}
+    assert runs["two"].trend_previous_run_id == "one"
+    assert runs["two"].trend_pass_rate_delta == 50
+    assert runs["three"].trend_pass_rate_delta == 0
+    assert runs["new-bsa"].trend_transition == "settings_changed"
+    assert runs["new-bsa"].trend_pass_rate_delta is None
+    assert runs["other-branch"].trend_previous_run_id is None
+    assert all(
+        "BSA " in cohort.label and "Skill 0.8.0" in cohort.label and "Agent agent-a" in cohort.label
+        for cohort in result.cohorts
+    )
+
+
+def test_skill_and_agent_versions_split_settings_and_errors_break_trend() -> None:
+    rows = [
+        execution("base", 10, "feature/a", "a", [0], covered=[0], config={"agent_name": "agent-a"}),
+        execution(
+            "skill-change",
+            11,
+            "feature/a",
+            "b",
+            [0],
+            covered=[0],
+            config={"skill_version": "0.9.0", "agent_name": "agent-a"},
+        ),
+        execution(
+            "agent-change",
+            12,
+            "feature/a",
+            "c",
+            [0],
+            covered=[0],
+            config={"skill_version": "0.9.0", "agent_name": "agent-b"},
+        ),
+        execution("error", 13, "feature/a", "d", [], covered=[], status="error"),
+        execution("after-error", 14, "feature/a", "e", [0], covered=[0]),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cases in rows for c in cases]
+    )
+    runs = {run.run_id: run for run in result.runs}
+    assert runs["skill-change"].trend_transition == "settings_changed"
+    assert runs["agent-change"].trend_transition == "settings_changed"
+    assert runs["after-error"].trend_previous_run_id == "error"
+    assert runs["after-error"].trend_transition == "incomplete"
+    assert runs["after-error"].trend_pass_rate_delta is None
+    assert len(result.cohorts) >= 3
+
+
+def test_same_timestamp_uses_repository_tie_order_for_trend_reference() -> None:
+    rows = [
+        execution("z-first", 10, "feature/a", "a", [0], covered=[0, 1]),
+        execution("a-second", 10, "feature/a", "b", [0, 1], covered=[0, 1]),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cases in rows for c in cases]
+    )
+    assert result.runs[0].run_id == "a-second"
+    assert result.runs[0].trend_previous_run_id == "z-first"
+    assert result.runs[0].trend_pass_rate_delta == 50
