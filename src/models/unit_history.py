@@ -20,7 +20,17 @@ class UnitHistoryScope(HistoryModel):
     environment: str
 
 
+class HistoryTrendReference(HistoryModel):
+    run_id: str
+    branch: str
+    started_at: datetime
+    pass_rate_delta: float | None
+    duration_delta_ms: float | None
+
+
 class HistoryRun(HistoryModel):
+    source_branch: str | None = None
+    trend_references: list[HistoryTrendReference] = Field(default_factory=list)
     trend_context_previous_run_id: str | None = None
     trend_context_changes: list[str] = Field(default_factory=list)
     trend_note: str | None = None
@@ -157,7 +167,15 @@ class HistorySignals(HistoryModel):
     operational_runs: int = 0
 
 
+class HistorySettingsGroup(HistoryModel):
+    key: str
+    label: str
+    run_ids: list[str]
+    cohort_keys: list[str]
+
+
 class UnitHistoryInsights(HistoryModel):
+    settings_groups: list[HistorySettingsGroup] = Field(default_factory=list)
     scope: UnitHistoryScope
     started_from: datetime
     started_before: datetime

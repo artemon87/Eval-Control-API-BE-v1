@@ -16,7 +16,9 @@ from src.models.unit_history import (
     HistoryCommit,
     HistoryIssue,
     HistoryRun,
+    HistorySettingsGroup,
     HistorySignals,
+    HistoryTrendReference,
     UnitHistoryInsights,
     UnitHistoryScope,
 )
@@ -166,6 +168,7 @@ def _prepare_runs(
             environment=environment,
             bsa_version=_text(config_raw.get("bsa_version")),
             agent_name=_text(config_raw.get("agent_name")),
+            source_branch=branch,
             run_id=run_id,
             branch_key=branch_key,
             branch_label=(
@@ -252,6 +255,30 @@ def _prepare_runs(
         result.append(run)
     # Keep the repository's _id ordering when executions have identical timestamps.
     return sorted(result, key=lambda run: run.model.started_at)
+
+
+def _settings_groups(runs: list[_Run]) -> list[HistorySettingsGroup]:
+    # This display filter is deliberately broader than comparison equivalence.
+    groups: dict[str, list[_Run]] = defaultdict(list)
+    for run in runs:
+        key = _json([run.config[name] for name in ("bsa_version", "skill_version", "agent_name")])
+        groups[key].append(run)
+    return sorted(
+        [
+            HistorySettingsGroup(
+                key=key,
+                label=(
+                    f"BSA {group[0].config['bsa_version'] or 'Not recorded'} · "
+                    f"Skill {group[0].config['skill_version'] or 'Not recorded'} · "
+                    f"Agent {group[0].config['agent_name'] or 'Not recorded'}"
+                ),
+                run_ids=[run.model.run_id for run in group],
+                cohort_keys=sorted({run.model.cohort_key for run in group if run.model.cohort_key}),
+            )
+            for key, group in groups.items()
+        ],
+        key=lambda group: group.label,
+    )
 
 
 def _cohorts(runs: list[_Run]) -> tuple[list[HistoryCohort], dict[str, list[_Run]]]:
@@ -551,6 +578,47 @@ def _execution_issues(runs: list[_Run]) -> list[HistoryIssue]:
     return issues
 
 
+def _annotate_branch_references(runs: list[_Run]) -> None:
+    # Keep the latest earlier comparable execution on each branch per exact signature.
+    previous: dict[str, dict[str, tuple[int, _Run]]] = defaultdict(dict)
+    for index, run in enumerate(runs):
+        model = run.model
+        if not (
+            run.complete_config
+            and model.quality_measured
+            and run.source_branch
+            and model.case_set_key
+        ):
+            continue
+        signature = _json(
+            [
+                model.stage,
+                model.target_environment,
+                model.environment,
+                run.config,
+                model.case_set_key,
+            ]
+        )
+        candidates = previous[signature]
+        model.trend_references = [
+            HistoryTrendReference(
+                run_id=before.model.run_id,
+                branch=branch,
+                started_at=before.model.started_at,
+                pass_rate_delta=(model.pass_rate_pct - before.model.pass_rate_pct)
+                if model.pass_rate_pct is not None and before.model.pass_rate_pct is not None
+                else None,
+                duration_delta_ms=(model.duration_ms - before.model.duration_ms)
+                if model.duration_ms is not None and before.model.duration_ms is not None
+                else None,
+            )
+            for branch, (_, before) in sorted(
+                candidates.items(), key=lambda item: item[1][0], reverse=True
+            )
+        ]
+        candidates[run.source_branch] = (index, run)
+
+
 def _annotate_trend_transitions(runs: list[_Run]) -> None:
     """Separate comparable-series deltas from same-branch context chronology."""
     previous: dict[str, _Run] = {}
@@ -644,6 +712,7 @@ def build_history_insights(
                 and run.model.environment != "unknown"
             )
     _annotate_trend_transitions(runs)
+    _annotate_branch_references(runs)
     cohorts, groups = _cohorts(runs)
     selected = cohort_key or (cohorts[0].key if cohorts else None)
     if cohort_key and cohort_key not in groups:
@@ -679,6 +748,7 @@ def build_history_insights(
         started_from=cast(datetime, window.started_from),
         started_before=cast(datetime, window.started_before),
         cohorts=cohorts,
+        settings_groups=_settings_groups(runs),
         selected_cohort_key=selected,
         runs=[run.model for run in reversed(runs)],
         branches=branches,
