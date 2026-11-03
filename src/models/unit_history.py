@@ -154,7 +154,15 @@ class HistorySignals(HistoryModel):
     operational_runs: int = 0
 
 
+class HistorySettingsGroup(HistoryModel):
+    key: str
+    label: str
+    run_ids: list[str]
+    cohort_keys: list[str]
+
+
 class UnitHistoryInsights(HistoryModel):
+    settings_groups: list[HistorySettingsGroup] = Field(default_factory=list)
     scope: UnitHistoryScope
     started_from: datetime
     started_before: datetime
