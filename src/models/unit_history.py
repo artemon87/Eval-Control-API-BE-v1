@@ -29,7 +29,17 @@ class HistoryTrendReference(HistoryModel):
     duration_delta_ms: float | None
 
 
+class HistoryProgression(HistoryModel):
+    key: str
+    label: str
+    previous_execution: HistoryTrendReference | None = None
+    previous_same_branch: HistoryTrendReference | None = None
+    previous_branch: HistoryTrendReference | None = None
+    branch_start: HistoryTrendReference | None = None
+
+
 class HistoryRun(HistoryModel):
+    progression: HistoryProgression | None = None
     observed_references: list[HistoryTrendReference] = Field(default_factory=list)
     comparison_blockers: list[str] = Field(default_factory=list)
     source_branch: str | None = None

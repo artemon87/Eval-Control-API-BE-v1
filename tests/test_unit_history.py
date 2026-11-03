@@ -748,3 +748,79 @@ def test_missing_optional_mode_has_observed_reference_without_claiming_equivalen
     assert "Evaluation mode not recorded" in current.observed_references[0].warnings
     assert "Evaluation mode not recorded" in current.comparison_blockers
     assert result.runs[1].observed_references == []
+
+
+def test_progression_crosses_branches_and_preserves_previous_branch_anchor() -> None:
+    rows = [
+        execution("a1", 10, "branch-a", "a", [0], covered=list(range(10)), config={"mode": None}),
+        execution(
+            "a2",
+            11,
+            "branch-a",
+            "b",
+            list(range(9)),
+            covered=list(range(10)),
+            config={"mode": None},
+        ),
+        execution(
+            "b1",
+            12,
+            "branch-b",
+            "c",
+            list(range(5)),
+            covered=list(range(10)),
+            config={"mode": None},
+        ),
+        execution(
+            "b2",
+            13,
+            "branch-b",
+            "d",
+            list(range(7)),
+            covered=list(range(10)),
+            config={"mode": None},
+        ),
+    ]
+    result = build_history_insights(
+        SCOPE, WINDOW, [r for r, _ in rows], [c for _, cs in rows for c in cs]
+    )
+    runs = {r.run_id: r for r in result.runs}
+    p = runs["b2"].progression
+    assert p.previous_execution.run_id == "b1"
+    assert p.previous_same_branch.pass_rate_delta == 20
+    assert p.previous_branch.run_id == "a2"
+    assert p.previous_branch.pass_rate_delta == -20
+    assert p.branch_start.run_id == "b1"
+    assert p.branch_start.pass_rate_delta == 20
+    assert runs["a2"].progression.key == p.key
+    assert p.previous_same_branch.warnings
+    assert runs["b1"].progression.previous_branch.run_id == "a2"
+
+
+def test_progression_separates_environment_and_settings_but_reports_test_changes() -> None:
+    rows = [
+        execution("base", 10, "branch-a", "a", [0], covered=[0, 1]),
+        execution("changed-tests", 11, "branch-b", "b", [0], covered=[0]),
+        execution("bsa", 12, "branch-c", "c", [0], covered=[0], bsa="other"),
+        execution(
+            "stage",
+            13,
+            "branch-d",
+            "d",
+            [0],
+            covered=[0],
+            config={"stage": "different", "target_environment": "other"},
+        ),
+    ]
+    scope = SCOPE.model_copy(update={"all_stages": True, "all_targets": True})
+    result = build_history_insights(
+        scope, WINDOW, [r for r, _ in rows], [c for _, cs in rows for c in cs]
+    )
+    runs = {r.run_id: r for r in result.runs}
+    assert runs["changed-tests"].progression.previous_execution.run_id == "base"
+    assert any(
+        "Tests or definitions changed" in note
+        for note in runs["changed-tests"].progression.previous_execution.warnings
+    )
+    assert runs["bsa"].progression.previous_execution is None
+    assert runs["stage"].progression.previous_execution is None
