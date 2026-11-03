@@ -11,7 +11,13 @@ from src.models.unit_history import UnitHistoryScope
 from src.repositories.base import normalize_document
 from src.repositories.time_window import apply_started_at_window
 
-HISTORY_SCOPE_FIELDS = ("skill", "github_repository", "stage", "target_environment", "environment")
+HISTORY_SCOPE_FIELDS = (
+    "skill",
+    "github_repository",
+    "stage",
+    "target_environment",
+    "environment",
+)
 
 
 def _trimmed(field: str, fallback: Any = None) -> dict[str, Any]:
@@ -123,6 +129,8 @@ def history_run_query(scope: UnitHistoryScope, window: TimeWindow) -> dict[str, 
                 {"$eq": [expression, {"$literal": getattr(scope, field)}]}
                 for field, expression in scope_projection().items()
                 if field != "skill"
+                and not (scope.all_stages and field == "stage")
+                and not (scope.all_targets and field in {"target_environment", "environment"})
             ]
         },
     }
@@ -211,7 +219,11 @@ async def load_history_inputs(
             },
             {
                 "$group": {
-                    "_id": {"run_id": "$run_id", "name": "$name", "test_type": "$test_type"},
+                    "_id": {
+                        "run_id": "$run_id",
+                        "name": "$name",
+                        "test_type": "$test_type",
+                    },
                     "verdicts": {"$addToSet": "$verdict"},
                     "definitions": {"$addToSet": "$definition"},
                     "records": {"$sum": 1},
