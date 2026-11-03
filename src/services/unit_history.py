@@ -109,6 +109,7 @@ def _configuration(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     mode = _text(raw.get("mode"))
     config = {
         "bsa_version": bsa,
+        "skill_version": _text(raw.get("skill_version")),
         "bsa_environment": _text(raw.get("bsa_environment")),
         "mode": mode,
         "metrics": metrics,
@@ -163,6 +164,7 @@ def _prepare_runs(
             target_environment=target,
             environment=environment,
             bsa_version=_text(config_raw.get("bsa_version")),
+            agent_name=_text(config_raw.get("agent_name")),
             run_id=run_id,
             branch_key=branch_key,
             branch_label=(
@@ -266,10 +268,13 @@ def _cohorts(runs: list[_Run]) -> tuple[list[HistoryCohort], dict[str, list[_Run
     cohorts = []
     for ordinal, key in enumerate(ordered, start=1):
         group, example = groups[key], groups[key][0]
-        label = f"Settings {ordinal} · BSA {example.config['bsa_version'] or 'not recorded'} · "
         case_count = len({case for run in group for case in run.cases})
-        label += f"{example.config['mode'] or 'mode not recorded'} · {case_count} case identities"
-        label += f" · {example.model.stage} · {example.model.target_environment or 'Target not recorded'}"
+        label = (
+            f"BSA {example.config['bsa_version'] or 'Not recorded'} · "
+            f"Skill {example.config['skill_version'] or 'Not recorded'} · "
+            f"Agent {example.config['agent_name'] or 'Not recorded'} · "
+            f"{example.model.stage} / {example.model.target_environment or 'Target not recorded'} · Settings {ordinal}"
+        )
         details = [
             f"Runtime: {example.config['bsa_environment'] or 'not recorded'} / "
             f"BSA {example.config['bsa_version'] or 'not recorded'}",
@@ -543,6 +548,40 @@ def _execution_issues(runs: list[_Run]) -> list[HistoryIssue]:
     return issues
 
 
+def _annotate_trend_transitions(runs: list[_Run]) -> None:
+    """Adjacent executions only; never bridge an error, missing evidence or another context."""
+    previous: dict[str, _Run] = {}
+    for run in runs:
+        model = run.model
+        before = previous.get(model.branch_key)
+        previous[model.branch_key] = run
+        if before is None:
+            continue
+        model.trend_previous_run_id = before.model.run_id
+        if not (
+            run.complete_config
+            and before.complete_config
+            and model.quality_measured
+            and before.model.quality_measured
+            and model.branch_label != "Branch not recorded"
+            and model.case_set_key
+            and before.model.case_set_key
+        ):
+            model.trend_transition = "incomplete"
+            continue
+        if (
+            model.cohort_key != before.model.cohort_key
+            or model.case_set_key != before.model.case_set_key
+        ):
+            model.trend_transition = "settings_changed"
+            continue
+        model.trend_transition = "comparable"
+        if model.pass_rate_pct is not None and before.model.pass_rate_pct is not None:
+            model.trend_pass_rate_delta = model.pass_rate_pct - before.model.pass_rate_pct
+        if model.duration_ms is not None and before.model.duration_ms is not None:
+            model.trend_duration_delta_ms = model.duration_ms - before.model.duration_ms
+
+
 def build_history_insights(
     scope: UnitHistoryScope,
     time_window: TimeWindow,
@@ -567,6 +606,7 @@ def build_history_insights(
                 and run.model.target_environment
                 and run.model.environment != "unknown"
             )
+    _annotate_trend_transitions(runs)
     cohorts, groups = _cohorts(runs)
     selected = cohort_key or (cohorts[0].key if cohorts else None)
     if cohort_key and cohort_key not in groups:
