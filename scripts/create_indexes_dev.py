@@ -156,7 +156,8 @@ async def reconcile(database, apply=False):
     plans, conflicts = {}, []
     # Complete preflight across all four collections before the first write.
     for collection, models in desired.items():
-        existing = await database[collection].list_indexes().to_list(length=None)
+        cursor = await database[collection].list_indexes()
+        existing = await cursor.to_list(length=None)
         missing, messages, errors = plan_collection(collection, models, existing)
         plans[collection] = missing
         conflicts.extend(errors)
@@ -173,7 +174,8 @@ async def reconcile(database, apply=False):
         for model in models:
             print(f"BUILD {collection}.{model.document['name']}", flush=True)
             await database[collection].create_indexes([model])
-            actual = await database[collection].list_indexes().to_list(length=None)
+            cursor = await database[collection].list_indexes()
+            actual = await cursor.to_list(length=None)
             if not any(signature(item) == signature(model.document) for item in actual):
                 raise RuntimeError("Post-build verification failed; stop and inspect indexes")
             print(f"OK {collection}.{model.document['name']}", flush=True)
