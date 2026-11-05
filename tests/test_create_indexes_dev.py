@@ -1,8 +1,11 @@
 import asyncio
 import copy
+import inspect
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
+
+from pymongo.asynchronous.collection import AsyncCollection
 
 from scripts.create_indexes_dev import (
     TARGET_DATABASE,
@@ -48,7 +51,7 @@ class Database:
         return list(self.inventory)
 
     def __getitem__(self, name):
-        def indexes():
+        async def indexes():
             return Cursor(self.inventory[name])
 
         async def create(models):
@@ -59,6 +62,10 @@ class Database:
 
 
 class IndexTests(unittest.TestCase):
+    def test_metadata_mock_matches_installed_pymongo_async_api(self):
+        self.assertTrue(inspect.iscoroutinefunction(AsyncCollection.list_indexes))
+        self.assertTrue(inspect.iscoroutinefunction(Database()["unit_eval_runs"].list_indexes))
+
     def test_dev_snapshot_has_exactly_four_missing_indexes(self):
         db = Database()
         before = copy.deepcopy(db.inventory)
