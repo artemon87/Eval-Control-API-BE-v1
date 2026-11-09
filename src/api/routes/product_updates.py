@@ -2,20 +2,21 @@ from __future__ import annotations
 
 import json
 import uuid
+from contextlib import suppress
 from datetime import date
 from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from starlette.responses import StreamingResponse
-
 from src.api.dependencies import (
+    CurrentUserDependency,
     ProductUpdateImageStoreDependency,
     ProductUpdateRepositoryDependency,
 )
 from src.models.product_updates import ProductUpdateListResponse, ProductUpdateResponse
+from src.repositories.product_updates import ProductUpdateNotFoundError
 from src.security.require_permission import EvalHubAdminDependency
-
+from starlette.responses import Response
 
 router = APIRouter(prefix="/product-updates", tags=["Product updates"])
 
@@ -54,7 +55,9 @@ async def list_product_updates(
     "",
     status_code=status.HTTP_201_CREATED,
     responses={
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid highlights or product update form data"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Invalid highlights or product update form data"
+        },
     },
 )
 async def create_product_update(
@@ -74,15 +77,17 @@ async def create_product_update(
         files=[image] if image else [],
     )
     try:
-        return ProductUpdateResponse.model_validate(await repository.create(
-            status=status_value,
-            release_date=date.fromisoformat(release_date),
-            category=category,
-            title=title,
-            description=description,
-            highlights=_highlights(highlights),
-            image=attachments[0] if attachments else None,
-        ))
+        return ProductUpdateResponse.model_validate(
+            await repository.create(
+                status=status_value,
+                release_date=date.fromisoformat(release_date),
+                category=category,
+                title=title,
+                description=description,
+                highlights=_highlights(highlights),
+                image=attachments[0] if attachments else None,
+            )
+        )
     except Exception:
         await image_store.delete_many(attachments)
         raise
@@ -92,29 +97,51 @@ async def create_product_update(
     "/{update_id}",
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "Product update not found"},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid highlights or product update form data"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Invalid highlights or product update form data"
+        },
     },
 )
 async def update_product_update(
     update_id: str,
     _admin: EvalHubAdminDependency,
     repository: ProductUpdateRepositoryDependency,
+    image_store: ProductUpdateImageStoreDependency,
     status_value: Annotated[str, Form(alias="status", pattern="^(shipped|coming|planned)$")],
     release_date: Annotated[str, Form(pattern=r"^\d{4}-\d{2}-\d{2}$")],
     category: Annotated[str, Form(min_length=2, max_length=80)],
     title: Annotated[str, Form(min_length=3, max_length=120)],
     description: Annotated[str, Form(min_length=10, max_length=2000)],
     highlights: Annotated[str, Form()],
+    image: Annotated[UploadFile | None, File()] = None,
 ) -> ProductUpdateResponse:
-    document = await repository.update(update_id, {
+    changes: dict[str, object] = {
         "status": status_value,
         "release_date": release_date,
         "category": category.strip(),
         "title": title.strip(),
         "description": description.strip(),
         "highlights": _highlights(highlights),
-    })
-    return ProductUpdateResponse.model_validate(document)
+    }
+    previous_image = None
+    if image is not None:
+        with suppress(ProductUpdateNotFoundError):
+            previous_image = await repository.get_image(update_id)
+    attachments = await image_store.upload_many(
+        suggestion_id=uuid.uuid4().hex,
+        files=[image] if image is not None else [],
+    )
+    if attachments:
+        changes["image"] = attachments[0]
+    try:
+        document = await repository.update(update_id, changes)
+        response = ProductUpdateResponse.model_validate(document)
+    except Exception:
+        await image_store.delete_many(attachments)
+        raise
+    if previous_image:
+        await image_store.delete_many([previous_image])
+    return response
 
 
 @router.delete(
@@ -143,16 +170,17 @@ async def delete_product_update(
 )
 async def get_product_update_image(
     update_id: str,
+    _viewer: CurrentUserDependency,
     repository: ProductUpdateRepositoryDependency,
     image_store: ProductUpdateImageStoreDependency,
-) -> StreamingResponse:
+) -> Response:
     image = await repository.get_image(update_id)
     filename = str(image["filename"])
-    return StreamingResponse(
-        image_store.iter_download(str(image["object_name"])),
+    return Response(
+        await image_store.download(image),
         media_type=str(image["content_type"]),
         headers={
-            "Cache-Control": "private, max-age=300",
+            "Cache-Control": "private, no-store",
             "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
             "X-Content-Type-Options": "nosniff",
         },

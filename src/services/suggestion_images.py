@@ -1,24 +1,22 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import uuid
 import warnings
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from io import BytesIO
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from fastapi import HTTPException, UploadFile, status
-from google.cloud import storage
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
+from pymongo.asynchronous.database import AsyncDatabase
 from starlette.concurrency import run_in_threadpool
 
-
-ALLOWED_CONTENT_TYPES = frozenset(
-    {"image/png", "image/jpeg", "image/heic", "image/heif"}
-)
+ALLOWED_CONTENT_TYPES = frozenset({"image/png", "image/jpeg", "image/heic", "image/heif"})
 HEIC_CONTENT_TYPES = frozenset({"image/heic", "image/heif"})
 IMAGE_FORMAT_TO_CONTENT_TYPE = {
     "PNG": "image/png",
@@ -41,20 +39,22 @@ class PreparedImage:
 
 @dataclass(frozen=True, slots=True)
 class SuggestionImageSettings:
-    bucket_name: str
-    object_prefix: str = "suggestions"
+    collection_name: str = "image_attachments"
+    namespace: str = "suggestions"
     max_files: int = 3
-    max_bytes: int = 10 * 1024 * 1024
+    max_bytes: int = 3 * 1024 * 1024
+
 
 class SuggestionImageStore:
     def __init__(
         self,
         settings: SuggestionImageSettings,
-        client: storage.Client | None = None,
+        database: AsyncDatabase[dict[str, Any]],
     ) -> None:
+        if not 0 < settings.max_bytes <= 3 * 1024 * 1024:
+            raise ValueError("Image size limit must be between 1 byte and 3 MiB")
         self.settings = settings
-        self.client = client or storage.Client()
-        self.bucket = self.client.bucket(settings.bucket_name)
+        self.collection = database[settings.collection_name]
 
     async def upload_many(
         self,
@@ -75,21 +75,22 @@ class SuggestionImageStore:
                 attachment_id = uuid.uuid4().hex
                 extension = ".png" if prepared.content_type == "image/png" else ".jpg"
                 filename = self._safe_filename(image.filename, extension)
-                object_name = (
-                    f"{self.settings.object_prefix}/{suggestion_id}/"
-                    f"{attachment_id}/{filename}"
-                )
-
-                blob = self.bucket.blob(object_name)
-                await run_in_threadpool(
-                    blob.upload_from_file,
-                    prepared.stream,
-                    content_type=prepared.content_type,
-                    size=prepared.size_bytes,
-                    rewind=True,
-                    if_generation_match=0,
-                    checksum="auto",
-                )
+                storage_id = f"{self.settings.namespace}/{suggestion_id}/{attachment_id}"
+                try:
+                    content = prepared.stream.read()
+                    await self.collection.insert_one(
+                        {
+                            "_id": storage_id,
+                            "namespace": self.settings.namespace,
+                            "parent_upload_id": suggestion_id,
+                            "filename": filename,
+                            "content_type": prepared.content_type,
+                            "data": content,
+                        }
+                    )
+                finally:
+                    if prepared.stream is not image.file:
+                        prepared.stream.close()
 
                 uploaded.append(
                     {
@@ -97,7 +98,7 @@ class SuggestionImageStore:
                         "filename": filename,
                         "content_type": prepared.content_type,
                         "size_bytes": prepared.size_bytes,
-                        "object_name": object_name,
+                        "storage_id": storage_id,
                     }
                 )
         except Exception:
@@ -108,20 +109,33 @@ class SuggestionImageStore:
 
     async def delete_many(self, attachments: Sequence[dict[str, object]]) -> None:
         for attachment in attachments:
-            object_name = attachment.get("object_name")
-            if not isinstance(object_name, str):
+            storage_id = attachment.get("storage_id")
+            if not isinstance(storage_id, str):
                 continue
             try:
-                await run_in_threadpool(self.bucket.blob(object_name).delete)
+                await self.collection.delete_one(
+                    {
+                        "_id": storage_id,
+                        "namespace": self.settings.namespace,
+                    }
+                )
             except Exception:
-                # Cleanup is best effort. The original exception is more useful to callers.
-                pass
+                # Preserve submission errors when rollback also fails.
+                logging.getLogger(__name__).exception("Could not clean up image %s", storage_id)
 
-    def iter_download(self, object_name: str, *, chunk_size: int = 256 * 1024) -> Iterator[bytes]:
-        blob = self.bucket.blob(object_name)
-        with blob.open("rb") as stream:
-            while chunk := stream.read(chunk_size):
-                yield chunk
+    async def download(self, attachment: dict[str, object]) -> bytes:
+        storage_id = attachment.get("storage_id")
+        if not isinstance(storage_id, str):
+            raise HTTPException(status_code=404, detail="Image must be re-uploaded")
+        document = await self.collection.find_one(
+            {
+                "_id": storage_id,
+                "namespace": self.settings.namespace,
+            }
+        )
+        if document is None:
+            raise HTTPException(status_code=404, detail="Image not found")
+        return bytes(document["data"])
 
     async def _prepare_image(self, image: UploadFile) -> PreparedImage:
         declared_type = (image.content_type or "").lower()
@@ -148,6 +162,7 @@ class SuggestionImageStore:
             SyntaxError,
             ValueError,
             Image.DecompressionBombWarning,
+            Image.DecompressionBombError,
         ) as error:
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -182,7 +197,7 @@ class SuggestionImageStore:
             max_mb = self.settings.max_bytes // (1024 * 1024)
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"{filename} exceeds {max_mb} MB",
+                detail=f"{filename} exceeds {max_mb} MiB",
             )
 
     @staticmethod

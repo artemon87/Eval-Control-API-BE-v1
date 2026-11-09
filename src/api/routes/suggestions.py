@@ -5,8 +5,6 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from starlette.responses import StreamingResponse
-
 from src.api.dependencies import (
     AuthorizationServiceDependency,
     CurrentUserDependency,
@@ -14,18 +12,16 @@ from src.api.dependencies import (
     SuggestionImageStoreDependency,
     SuggestionRepositoryDependency,
 )
-from src.models.auth import CurrentUser
+from src.models.authorization import Permission
 from src.models.suggestions import (
     SuggestionListResponse,
     SuggestionResponse,
     SuggestionStatusUpdate,
 )
-
-from src.models.authorization import Permission
 from src.security.authorization_identity import (
     identity_from_authenticated_user,
 )
-
+from starlette.responses import Response
 
 router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
 
@@ -44,6 +40,7 @@ def current_user(
 
 
 Viewer = Annotated[str, Depends(current_user)]
+
 
 def optional_viewer(
     user: OptionalUserDependency,
@@ -68,9 +65,7 @@ async def list_suggestions(
         limit=limit,
     )
 
-    return SuggestionListResponse(
-        items=[SuggestionResponse.model_validate(item) for item in items]
-    )
+    return SuggestionListResponse(items=[SuggestionResponse.model_validate(item) for item in items])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -88,11 +83,7 @@ async def create_suggestion(
         files=images or [],
     )
 
-    author_name = (
-        user.display_name
-        or user.email
-        or viewer.removeprefix("user:")
-    )
+    author_name = user.display_name or user.email or viewer.removeprefix("user:")
 
     try:
         document = await repository.create(
@@ -112,10 +103,10 @@ async def create_suggestion(
 async def get_suggestion_attachment(
     suggestion_id: str,
     attachment_id: str,
-    _viewer: OptionalViewer,
+    _viewer: Viewer,
     repository: SuggestionRepositoryDependency,
     image_store: SuggestionImageStoreDependency,
-) -> StreamingResponse:
+) -> Response:
     try:
         attachment = await repository.get_attachment(
             suggestion_id=suggestion_id,
@@ -128,15 +119,16 @@ async def get_suggestion_attachment(
         ) from exc
 
     filename = str(attachment["filename"])
-    return StreamingResponse(
-        image_store.iter_download(str(attachment["object_name"])),
+    return Response(
+        await image_store.download(attachment),
         media_type=str(attachment["content_type"]),
         headers={
-            "Cache-Control": "private, max-age=300",
+            "Cache-Control": "private, no-store",
             "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
             "X-Content-Type-Options": "nosniff",
         },
     )
+
 
 @router.patch(
     "/{suggestion_id}/status",
@@ -153,22 +145,18 @@ async def update_suggestion_status(
     identity = identity_from_authenticated_user(current_user)
     authorization = await authorization_service.resolve(identity)
 
-    if (
-        Permission.SUGGESTION_MANAGE
-        not in authorization.permissions
-    ):
+    if Permission.SUGGESTION_MANAGE not in authorization.permissions:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to manage suggestions",
         )
-        
+
     updated_by_name = (
         getattr(current_user, "name", None)
         or getattr(current_user, "display_name", None)
         or getattr(current_user, "email", None)
         or viewer
     )
-    
 
     try:
         document = await repository.update_status(
