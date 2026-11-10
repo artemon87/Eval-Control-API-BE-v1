@@ -5,6 +5,8 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from starlette.responses import Response
+
 from src.api.dependencies import (
     AuthorizationServiceDependency,
     CurrentUserDependency,
@@ -12,16 +14,18 @@ from src.api.dependencies import (
     SuggestionImageStoreDependency,
     SuggestionRepositoryDependency,
 )
-from src.models.authorization import Permission
+from src.models.auth import CurrentUser
 from src.models.suggestions import (
     SuggestionListResponse,
     SuggestionResponse,
     SuggestionStatusUpdate,
 )
+
+from src.models.authorization import Permission
 from src.security.authorization_identity import (
     identity_from_authenticated_user,
 )
-from starlette.responses import Response
+
 
 router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
 
@@ -40,7 +44,6 @@ def current_user(
 
 
 Viewer = Annotated[str, Depends(current_user)]
-
 
 def optional_viewer(
     user: OptionalUserDependency,
@@ -65,7 +68,9 @@ async def list_suggestions(
         limit=limit,
     )
 
-    return SuggestionListResponse(items=[SuggestionResponse.model_validate(item) for item in items])
+    return SuggestionListResponse(
+        items=[SuggestionResponse.model_validate(item) for item in items]
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -83,7 +88,11 @@ async def create_suggestion(
         files=images or [],
     )
 
-    author_name = user.display_name or user.email or viewer.removeprefix("user:")
+    author_name = (
+        user.display_name
+        or user.email
+        or viewer.removeprefix("user:")
+    )
 
     try:
         document = await repository.create(
@@ -129,7 +138,6 @@ async def get_suggestion_attachment(
         },
     )
 
-
 @router.patch(
     "/{suggestion_id}/status",
     response_model=SuggestionResponse,
@@ -145,18 +153,22 @@ async def update_suggestion_status(
     identity = identity_from_authenticated_user(current_user)
     authorization = await authorization_service.resolve(identity)
 
-    if Permission.SUGGESTION_MANAGE not in authorization.permissions:
+    if (
+        Permission.SUGGESTION_MANAGE
+        not in authorization.permissions
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to manage suggestions",
         )
-
+        
     updated_by_name = (
         getattr(current_user, "name", None)
         or getattr(current_user, "display_name", None)
         or getattr(current_user, "email", None)
         or viewer
     )
+    
 
     try:
         document = await repository.update_status(

@@ -16,7 +16,10 @@ from pillow_heif import register_heif_opener
 from pymongo.asynchronous.database import AsyncDatabase
 from starlette.concurrency import run_in_threadpool
 
-ALLOWED_CONTENT_TYPES = frozenset({"image/png", "image/jpeg", "image/heic", "image/heif"})
+
+ALLOWED_CONTENT_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/heic", "image/heif"}
+)
 HEIC_CONTENT_TYPES = frozenset({"image/heic", "image/heif"})
 IMAGE_FORMAT_TO_CONTENT_TYPE = {
     "PNG": "image/png",
@@ -43,7 +46,6 @@ class SuggestionImageSettings:
     namespace: str = "suggestions"
     max_files: int = 3
     max_bytes: int = 3 * 1024 * 1024
-
 
 class SuggestionImageStore:
     def __init__(

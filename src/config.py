@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     unit_cases_collection: str = "unit_eval_cases"
     e2e_runs_collection: str = "e2e_eval_runs"
     e2e_cases_collection: str = "e2e_eval_cases"
-
+    
     image_attachments_collection: str = "image_attachments"
     suggestions_collection: str = "suggestions"
     suggestion_votes_collection: str = "suggestion_votes"

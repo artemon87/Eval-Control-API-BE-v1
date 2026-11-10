@@ -8,6 +8,8 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from starlette.responses import Response
+
 from src.api.dependencies import (
     CurrentUserDependency,
     ProductUpdateImageStoreDependency,
@@ -16,7 +18,7 @@ from src.api.dependencies import (
 from src.models.product_updates import ProductUpdateListResponse, ProductUpdateResponse
 from src.repositories.product_updates import ProductUpdateNotFoundError
 from src.security.require_permission import EvalHubAdminDependency
-from starlette.responses import Response
+
 
 router = APIRouter(prefix="/product-updates", tags=["Product updates"])
 
@@ -55,9 +57,7 @@ async def list_product_updates(
     "",
     status_code=status.HTTP_201_CREATED,
     responses={
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {
-            "description": "Invalid highlights or product update form data"
-        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid highlights or product update form data"},
     },
 )
 async def create_product_update(
@@ -77,17 +77,15 @@ async def create_product_update(
         files=[image] if image else [],
     )
     try:
-        return ProductUpdateResponse.model_validate(
-            await repository.create(
-                status=status_value,
-                release_date=date.fromisoformat(release_date),
-                category=category,
-                title=title,
-                description=description,
-                highlights=_highlights(highlights),
-                image=attachments[0] if attachments else None,
-            )
-        )
+        return ProductUpdateResponse.model_validate(await repository.create(
+            status=status_value,
+            release_date=date.fromisoformat(release_date),
+            category=category,
+            title=title,
+            description=description,
+            highlights=_highlights(highlights),
+            image=attachments[0] if attachments else None,
+        ))
     except Exception:
         await image_store.delete_many(attachments)
         raise
@@ -97,9 +95,7 @@ async def create_product_update(
     "/{update_id}",
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "Product update not found"},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {
-            "description": "Invalid highlights or product update form data"
-        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid highlights or product update form data"},
     },
 )
 async def update_product_update(
